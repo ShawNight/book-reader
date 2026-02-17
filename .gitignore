@@ -68,3 +68,6 @@ coverage/
 *.g.dart
 *.freezed.dart
 *.gr.dart
+
+# Book source file (local only)
+书源.json
