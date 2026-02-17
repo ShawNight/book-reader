@@ -1,6 +1,6 @@
 // This is a generated file; do not edit or check into version control.
-FLUTTER_ROOT=/home/xy666/DevTools/flutter
-FLUTTER_APPLICATION_PATH=/home/xy666/projects/book-reader
+FLUTTER_ROOT=/home/shawnight/flutter
+FLUTTER_APPLICATION_PATH=/home/shawnight/项目工作/book-reader
 COCOAPODS_PARALLEL_CODE_SIGN=true
 FLUTTER_TARGET=lib/main.dart
 FLUTTER_BUILD_DIR=build

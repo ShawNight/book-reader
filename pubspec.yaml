@@ -48,10 +48,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  assets:
-    - assets/images/
+  # assets:
+  #   - assets/images/
 
-  fonts:
-    - family: ReadingFont
-      fonts:
-        - asset: assets/fonts/NotoSansSC-Regular.ttf
+  # fonts:
+  #   - family: ReadingFont
+  #     fonts:
+  #       - asset: assets/fonts/NotoSansSC-Regular.ttf
