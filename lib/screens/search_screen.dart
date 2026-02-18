@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/search_service.dart';
@@ -22,10 +24,14 @@ class _SearchScreenState extends State<SearchScreen> {
   List<SearchResult> _results = [];
   bool _isSearching = false;
   String? _error;
+  int _completedSources = 0;
+  int _totalSources = 0;
+  StreamSubscription? _searchSubscription;
 
   @override
   void dispose() {
     _controller.dispose();
+    _searchSubscription?.cancel();
     super.dispose();
   }
 
@@ -33,10 +39,15 @@ class _SearchScreenState extends State<SearchScreen> {
     final keyword = _controller.text.trim();
     if (keyword.isEmpty) return;
 
+    // 取消之前的搜索
+    _searchSubscription?.cancel();
+
     setState(() {
       _isSearching = true;
       _error = null;
       _results = [];
+      _completedSources = 0;
+      _totalSources = 0;
     });
 
     try {
@@ -51,18 +62,44 @@ class _SearchScreenState extends State<SearchScreen> {
         return;
       }
 
-      // 搜索
-      final results = await _searchService.search(keyword, sources);
+      // 统计有效书源数量
+      final validSources = sources
+          .where((s) => s.enabled == true && s.searchUrl != null && s.searchUrl!.isNotEmpty)
+          .toList();
+      _totalSources = validSources.length;
 
-      if (!mounted) return;
-      setState(() {
-        _results = results;
-        _isSearching = false;
+      // 开始流式搜索
+      _searchSubscription = _searchService.searchStream(keyword, sources).listen(
+        (data) {
+          if (!mounted) return;
 
-        if (results.isEmpty) {
-          _error = '未找到相关小说';
-        }
-      });
+          if (data is SearchResult) {
+            setState(() {
+              _results.add(data);
+            });
+          } else if (data is SearchProgress) {
+            setState(() {
+              _completedSources = data.completed;
+            });
+          }
+        },
+        onDone: () {
+          if (!mounted) return;
+          setState(() {
+            _isSearching = false;
+            if (_results.isEmpty) {
+              _error = '未找到相关小说';
+            }
+          });
+        },
+        onError: (e) {
+          if (!mounted) return;
+          setState(() {
+            _isSearching = false;
+            _error = '搜索失败：$e';
+          });
+        },
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -70,6 +107,14 @@ class _SearchScreenState extends State<SearchScreen> {
         _error = '搜索失败：$e';
       });
     }
+  }
+
+  /// 取消搜索
+  void _cancelSearch() {
+    _searchSubscription?.cancel();
+    setState(() {
+      _isSearching = false;
+    });
   }
 
   @override
@@ -86,10 +131,16 @@ class _SearchScreenState extends State<SearchScreen> {
           onSubmitted: (_) => _search(),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: _isSearching ? null : _search,
-          ),
+          if (_isSearching)
+            TextButton(
+              onPressed: _cancelSearch,
+              child: const Text('取消'),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: _search,
+            ),
         ],
       ),
       body: _buildBody(),
@@ -97,43 +148,93 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildBody() {
+    // 显示搜索进度状态栏
+    final showProgress = _isSearching || _results.isNotEmpty;
+
+    return Column(
+      children: [
+        // 搜索状态栏
+        if (showProgress) _buildStatusBar(),
+
+        // 结果列表或占位
+        Expanded(
+          child: _error != null && !_isSearching
+              ? _buildError()
+              : _results.isEmpty && !_isSearching
+                  ? _buildEmpty()
+                  : _buildResultList(),
+        ),
+      ],
+    );
+  }
+
+  /// 构建状态栏
+  Widget _buildStatusBar() {
+    String statusText;
     if (_isSearching) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('正在搜索...'),
-          ],
-        ),
-      );
+      if (_totalSources > 0) {
+        statusText = '正在搜索 $_completedSources/$_totalSources 个书源...';
+      } else {
+        statusText = '正在搜索...';
+      }
+    } else {
+      statusText = '搜索完成，找到 ${_results.length} 个结果';
     }
 
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(_error!),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _search,
-              child: const Text('重试'),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Row(
+        children: [
+          if (_isSearching)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
-          ],
-        ),
-      );
-    }
+          Expanded(
+            child: Text(
+              statusText,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-    if (_results.isEmpty) {
-      return const Center(
-        child: Text('输入关键词搜索小说'),
-      );
-    }
+  /// 构建错误视图
+  Widget _buildError() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(_error!),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _search,
+            child: const Text('重试'),
+          ),
+        ],
+      ),
+    );
+  }
 
+  /// 构建空视图
+  Widget _buildEmpty() {
+    return const Center(
+      child: Text('输入关键词搜索小说'),
+    );
+  }
+
+  /// 构建结果列表
+  Widget _buildResultList() {
     return ListView.builder(
       itemCount: _results.length,
       itemBuilder: (context, index) {
