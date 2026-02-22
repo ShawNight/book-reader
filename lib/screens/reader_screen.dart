@@ -5,6 +5,7 @@ import '../models/reader_settings.dart';
 import '../services/search_service.dart';
 import '../services/bookshelf_service.dart';
 import '../services/reader_settings_service.dart';
+import '../services/chapter_cache_service.dart';
 
 /// 阅读页面
 class ReaderScreen extends StatefulWidget {
@@ -31,6 +32,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final SearchService _searchService = SearchService();
   final BookshelfService _bookshelfService = BookshelfService();
   final ReaderSettingsService _settingsService = ReaderSettingsService();
+  final ChapterCacheService _cacheService = ChapterCacheService();
   final PageController _pageController = PageController();
 
   late int _currentIndex;
@@ -49,7 +51,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController.addListener(_onPageChanged);
-    _loadSettings();
+    _initServices();
 
     // 预加载当前章节
     _loadChapter(_currentIndex);
@@ -59,8 +61,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  Future<void> _loadSettings() async {
-    await _settingsService.init();
+  Future<void> _initServices() async {
+    await Future.wait([
+      _settingsService.init(),
+      _cacheService.init(),
+    ]);
     if (mounted) {
       setState(() {
         _settings = _settingsService.settings;
@@ -137,15 +142,34 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     setState(() => _loadingStates[index] = true);
 
+    final chapterUrl = widget.chapters[index].url;
+
     try {
-      final content = await _searchService.getChapterContent(
-        widget.chapters[index].url,
-        widget.source,
-      );
+      // 先尝试从缓存读取
+      String? content = await _cacheService.getCache(chapterUrl);
+
+      if (content != null) {
+        print('从缓存加载章节: ${widget.chapters[index].name}');
+      } else {
+        // 缓存不存在，从网络加载
+        print('从网络加载章节: ${widget.chapters[index].name}');
+        final result = await _searchService.getChapterContent(
+          chapterUrl,
+          widget.source,
+        );
+        content = result.content;
+
+        // 保存到缓存
+        await _cacheService.saveCache(
+          chapterUrl,
+          content,
+          bookName: widget.bookName,
+        );
+      }
 
       if (mounted) {
         setState(() {
-          _contentCache[index] = content.content;
+          _contentCache[index] = content!;
           _loadingStates[index] = false;
         });
       }
