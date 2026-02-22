@@ -71,3 +71,6 @@ coverage/
 
 # Book source file (local only)
 书源.json
+
+# Android Gradle cache
+android/.gradle/
