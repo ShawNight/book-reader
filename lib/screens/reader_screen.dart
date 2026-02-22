@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/book_source.dart';
+import '../models/reader_settings.dart';
 import '../services/search_service.dart';
 import '../services/bookshelf_service.dart';
+import '../services/reader_settings_service.dart';
 
 /// 阅读页面
 class ReaderScreen extends StatefulWidget {
@@ -28,6 +30,7 @@ class ReaderScreen extends StatefulWidget {
 class _ReaderScreenState extends State<ReaderScreen> {
   final SearchService _searchService = SearchService();
   final BookshelfService _bookshelfService = BookshelfService();
+  final ReaderSettingsService _settingsService = ReaderSettingsService();
   final PageController _pageController = PageController();
 
   late int _currentIndex;
@@ -35,18 +38,29 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final Map<int, bool> _loadingStates = {};
 
   bool _showControls = true;
+  ReaderSettings _settings = const ReaderSettings();
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController.addListener(_onPageChanged);
+    _loadSettings();
 
     // 预加载当前章节
     _loadChapter(_currentIndex);
     // 预加载下一章节
     if (_currentIndex + 1 < widget.chapters.length) {
       _loadChapter(_currentIndex + 1);
+    }
+  }
+
+  Future<void> _loadSettings() async {
+    await _settingsService.init();
+    if (mounted) {
+      setState(() {
+        _settings = _settingsService.settings;
+      });
     }
   }
 
@@ -155,6 +169,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ),
                   actions: [
                     IconButton(
+                      icon: const Icon(Icons.settings),
+                      onPressed: () => _showSettingsPanel(),
+                    ),
+                    IconButton(
                       icon: const Icon(Icons.list),
                       onPressed: () => _showChapterList(),
                     ),
@@ -228,10 +246,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
   Widget _buildChapterPage(int index) {
     final isLoading = _loadingStates[index] == true;
     final content = _contentCache[index];
+    final theme = _settings.theme;
 
     if (isLoading && content == null) {
-      return const Center(
-        child: CircularProgressIndicator(),
+      return Container(
+        color: theme.backgroundColor,
+        child: Center(
+          child: CircularProgressIndicator(
+            color: theme.textColor,
+          ),
+        ),
       );
     }
 
@@ -240,14 +264,22 @@ class _ReaderScreenState extends State<ReaderScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _loadChapter(index);
       });
-      return const Center(
-        child: CircularProgressIndicator(),
+      return Container(
+        color: theme.backgroundColor,
+        child: Center(
+          child: CircularProgressIndicator(
+            color: theme.textColor,
+          ),
+        ),
       );
     }
 
     return Container(
-      color: const Color(0xFFF5F5DC), // 米黄色背景
-      padding: const EdgeInsets.all(16),
+      color: theme.backgroundColor,
+      padding: EdgeInsets.symmetric(
+        vertical: _settings.verticalPadding,
+        horizontal: _settings.horizontalPadding,
+      ),
       child: SafeArea(
         child: SingleChildScrollView(
           child: Column(
@@ -256,18 +288,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
               // 章节标题
               Text(
                 widget.chapters[index].name,
-                style: const TextStyle(
-                  fontSize: 20,
+                style: TextStyle(
+                  fontSize: _settings.fontSize + 2,
                   fontWeight: FontWeight.bold,
+                  color: theme.textColor,
                 ),
               ),
-              const SizedBox(height: 24),
+              SizedBox(height: _settings.lineHeight * 10),
               // 章节内容
               Text(
                 content,
-                style: const TextStyle(
-                  fontSize: 18,
-                  height: 1.8,
+                style: TextStyle(
+                  fontSize: _settings.fontSize,
+                  height: _settings.lineHeight,
+                  color: theme.textColor,
                 ),
               ),
               const SizedBox(height: 48),
@@ -333,6 +367,178 @@ class _ReaderScreenState extends State<ReaderScreen> {
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  /// 显示阅读设置面板
+  void _showSettingsPanel() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 标题栏
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '阅读设置',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+
+                  // 字体大小调节
+                  Row(
+                    children: [
+                      const Text('字体大小'),
+                      const SizedBox(width: 16),
+                      const Text('A', style: TextStyle(fontSize: 14)),
+                      Expanded(
+                        child: Slider(
+                          value: _settings.fontSize,
+                          min: 12,
+                          max: 32,
+                          divisions: 20,
+                          label: _settings.fontSize.round().toString(),
+                          onChanged: (value) {
+                            setModalState(() {
+                              _settings = _settings.copyWith(fontSize: value);
+                            });
+                            setState(() {});
+                            _settingsService.saveSettings(_settings);
+                          },
+                        ),
+                      ),
+                      const Text('A', style: TextStyle(fontSize: 22)),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          _settings.fontSize.round().toString(),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 行间距调节
+                  Row(
+                    children: [
+                      const Text('行间距'),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Slider(
+                          value: _settings.lineHeight,
+                          min: 1.2,
+                          max: 3.0,
+                          divisions: 18,
+                          label: _settings.lineHeight.toStringAsFixed(1),
+                          onChanged: (value) {
+                            setModalState(() {
+                              _settings = _settings.copyWith(lineHeight: value);
+                            });
+                            setState(() {});
+                            _settingsService.saveSettings(_settings);
+                          },
+                        ),
+                      ),
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          _settings.lineHeight.toStringAsFixed(1),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 主题选择
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('阅读主题'),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 60,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: ReaderSettings.themes.length,
+                      itemBuilder: (context, index) {
+                        final theme = ReaderSettings.themes[index];
+                        final isSelected = index == _settings.themeIndex;
+                        return GestureDetector(
+                          onTap: () {
+                            setModalState(() {
+                              _settings = _settings.copyWith(themeIndex: index);
+                            });
+                            setState(() {});
+                            _settingsService.saveSettings(_settings);
+                          },
+                          child: Container(
+                            width: 60,
+                            margin: const EdgeInsets.only(right: 12),
+                            decoration: BoxDecoration(
+                              color: theme.backgroundColor,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Theme.of(context).primaryColor
+                                    : Colors.grey.shade300,
+                                width: isSelected ? 3 : 1,
+                              ),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  '文',
+                                  style: TextStyle(
+                                    color: theme.textColor,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  theme.name,
+                                  style: TextStyle(
+                                    color: theme.textColor,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+                ],
+              ),
+            );
+          },
         );
       },
     );
