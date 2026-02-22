@@ -1,0 +1,57 @@
+name: yuedu_flutter
+description: "YueDu Flutter (YDF) - 开源阅读器，支持导入本地 JSON 书源"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 状态管理
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+
+  # 本地存储
+  isar: ^3.1.0+1
+  isar_flutter_libs: ^3.1.0+1
+  path_provider: ^2.1.2
+
+  # 网络请求
+  dio: ^5.4.0
+
+  # HTML 解析
+  html: ^0.15.4
+
+  # 文件选择器
+  file_selector: ^1.0.3
+
+  # 工具库
+  json_annotation: ^4.8.1
+  freezed_annotation: ^2.4.0
+  url_launcher: ^6.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+  # 代码生成
+  build_runner: ^2.4.7
+  json_serializable: ^6.7.1
+  riverpod_generator: ^2.3.9
+  freezed: ^2.4.5
+  isar_generator: ^3.1.0+1
+
+flutter:
+  uses-material-design: true
+
+  # assets:
+  #   - assets/images/
+
+  # fonts:
+  #   - family: ReadingFont
+  #     fonts:
+  #       - asset: assets/fonts/NotoSansSC-Regular.ttf
