@@ -74,3 +74,4 @@ coverage/
 
 # Android Gradle cache
 android/.gradle/
+book_source.json
