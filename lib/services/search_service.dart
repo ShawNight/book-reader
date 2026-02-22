@@ -61,10 +61,20 @@ class ChapterContent {
 
 /// 搜索服务
 class SearchService {
-  final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 15),
+  /// 搜索用的 Dio（短超时，快速失败）
+  final Dio _searchDio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 8),
+    receiveTimeout: const Duration(seconds: 8),
   ));
+
+  /// 获取内容用的 Dio（长超时，保证内容获取）
+  final Dio _contentDio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 20),
+    receiveTimeout: const Duration(seconds: 20),
+  ));
+
+  /// 最大并发搜索数
+  static const int _maxConcurrentSearches = 5;
 
   /// 搜索小说
   Future<List<SearchResult>> search(
@@ -88,7 +98,7 @@ class SearchService {
     return results;
   }
 
-  /// 流式搜索 - 每完成一个书源就返回结果
+  /// 流式搜索 - 限制并发数，每完成一个书源就返回结果
   Stream<dynamic> searchStream(
     String keyword,
     List<BookSource> sources,
@@ -101,36 +111,54 @@ class SearchService {
 
     final total = validSources.length;
     var completed = 0;
+    final activeCount = <int>[0]; // 使用列表来允许可变引用
 
-    // 并发搜索所有书源
-    Future.wait(
-      validSources.map((source) async {
-        // 发送进度更新
+    // 分批并发搜索
+    Future<void> processSource(BookSource source) async {
+      // 发送进度更新
+      controller.add(SearchProgress(
+        completed: completed,
+        total: total,
+        currentSourceName: source.bookSourceName,
+      ));
+
+      try {
+        final results = await _searchInSource(keyword, source);
+        for (final result in results) {
+          controller.add(result);
+        }
+      } catch (e) {
+        print('搜索书源 ${source.bookSourceName} 失败: $e');
+      } finally {
+        completed++;
+        activeCount[0]--;
+        // 发送完成进度
         controller.add(SearchProgress(
           completed: completed,
           total: total,
-          currentSourceName: source.bookSourceName,
         ));
+      }
+    }
 
-        try {
-          final results = await _searchInSource(keyword, source);
-          for (final result in results) {
-            controller.add(result);
-          }
-        } catch (e) {
-          print('搜索书源 ${source.bookSourceName} 失败: $e');
-        } finally {
-          completed++;
-          // 发送完成进度
-          controller.add(SearchProgress(
-            completed: completed,
-            total: total,
-          ));
-        }
-      }),
-    ).then((_) {
-      controller.close();
-    });
+    // 限制并发的调度器
+    int index = 0;
+    void scheduleNext() {
+      while (index < validSources.length && activeCount[0] < _maxConcurrentSearches) {
+        activeCount[0]++;
+        final source = validSources[index++];
+        processSource(source).then((_) {
+          scheduleNext();
+        });
+      }
+
+      // 所有任务完成
+      if (completed >= total && controller.isClosed == false) {
+        controller.close();
+      }
+    }
+
+    // 开始调度
+    scheduleNext();
 
     return controller.stream;
   }
@@ -162,8 +190,8 @@ class SearchService {
       url = _resolveUrl(url, baseUrl);
     }
 
-    // 发送请求
-    final response = await _dio.get<String>(
+    // 发送请求（使用搜索专用短超时）
+    final response = await _searchDio.get<String>(
       url,
       options: Options(
         headers: {
@@ -384,7 +412,8 @@ class SearchService {
     print('📖 获取章节目录: $bookUrl');
     print('📖 书源: ${source.bookSourceName}');
 
-    final response = await _dio.get<String>(
+    // 使用内容专用长超时
+    final response = await _contentDio.get<String>(
       bookUrl,
       options: Options(
         headers: {
@@ -867,7 +896,8 @@ class SearchService {
       print('📖 拼接URL: $chapterUrl -> $fullUrl');
     }
 
-    final response = await _dio.get<String>(
+    // 使用内容专用长超时
+    final response = await _contentDio.get<String>(
       fullUrl,
       options: Options(
         headers: {
@@ -913,11 +943,14 @@ class SearchService {
 
       String content = _extractJsonText(json, rule.content)?.trim() ?? '';
 
-      // 处理正则替换
+      // 处理正则替换（添加保护）
       if (rule.replaceRegex != null && rule.replaceRegex!.isNotEmpty) {
         try {
           final regex = RegExp(rule.replaceRegex!);
-          content = content.replaceAll(regex, '');
+          final newContent = content.replaceAll(regex, '');
+          if (newContent.length > 100) {
+            content = newContent;
+          }
         } catch (e) {
           print('替换正则错误: $e');
         }
@@ -985,12 +1018,19 @@ class SearchService {
 
     print('📄 最终内容长度: ${content.length}');
 
-    // 清理内容
+    // 清理内容（添加保护：如果替换后内容太短则不应用）
     if (rule.replaceRegex != null && rule.replaceRegex!.isNotEmpty) {
       print('📄 应用替换正则: ${rule.replaceRegex}');
       try {
         final regex = RegExp(rule.replaceRegex!);
-        content = content.replaceAll(regex, '');
+        final newContent = content.replaceAll(regex, '');
+        // 只有当替换后内容仍然足够长时才应用
+        // 避免贪婪正则把正文全部删除
+        if (newContent.length > 100) {
+          content = newContent;
+        } else {
+          print('📄 替换后内容太短(${newContent.length}字符)，跳过替换');
+        }
       } catch (e) {
         print('替换正则错误: $e');
       }

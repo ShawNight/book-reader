@@ -27,12 +27,73 @@ class _SearchScreenState extends State<SearchScreen> {
   int _completedSources = 0;
   int _totalSources = 0;
   StreamSubscription? _searchSubscription;
+  String _currentKeyword = '';
+  List<SearchResult> _allResults = []; // 存储所有未排序的结果
 
   @override
   void dispose() {
     _controller.dispose();
     _searchSubscription?.cancel();
     super.dispose();
+  }
+
+  /// 计算搜索结果的相关性分数（参考阅读3.0等成熟APP）
+  /// 分数范围: 0-100，分数越高越相关
+  int _calculateRelevanceScore(SearchResult result, String keyword) {
+    final lowerKeyword = keyword.toLowerCase();
+    final lowerName = result.name.toLowerCase();
+    final lowerAuthor = result.author.toLowerCase();
+
+    // 1. 书名完全匹配 (最高优先级)
+    if (lowerName == lowerKeyword) return 100;
+
+    // 2. 书名以关键词开头
+    if (lowerName.startsWith(lowerKeyword)) return 90;
+
+    // 3. 书名包含完整关键词
+    if (lowerName.contains(lowerKeyword)) return 80;
+
+    // 4. 书名包含关键词的字符（宽松匹配，适用于中文）
+    int charMatchCount = 0;
+    for (int i = 0; i < lowerKeyword.length; i++) {
+      if (lowerName.contains(lowerKeyword[i])) {
+        charMatchCount++;
+      }
+    }
+    if (charMatchCount == lowerKeyword.length) {
+      // 所有字符都匹配，给一个较高的分数
+      return 70;
+    }
+
+    // 5. 作者完全匹配
+    if (lowerAuthor == lowerKeyword) return 60;
+
+    // 6. 作者以关键词开头
+    if (lowerAuthor.startsWith(lowerKeyword)) return 55;
+
+    // 7. 作者包含关键词
+    if (lowerAuthor.contains(lowerKeyword)) return 50;
+
+    // 8. 部分字符匹配
+    if (charMatchCount > lowerKeyword.length / 2) {
+      return 30 + (charMatchCount * 10 ~/ lowerKeyword.length);
+    }
+
+    // 9. 不太相关，但仍然显示
+    return 10;
+  }
+
+  /// 对搜索结果进行排序（相关度高的排前面）
+  List<SearchResult> _sortResults(List<SearchResult> results, String keyword) {
+    // 计算每个结果的分数
+    final scoredResults = results.map((result) {
+      return MapEntry(result, _calculateRelevanceScore(result, keyword));
+    }).toList();
+
+    // 按分数降序排序
+    scoredResults.sort((a, b) => b.value.compareTo(a.value));
+
+    return scoredResults.map((e) => e.key).toList();
   }
 
   Future<void> _search() async {
@@ -46,8 +107,10 @@ class _SearchScreenState extends State<SearchScreen> {
       _isSearching = true;
       _error = null;
       _results = [];
+      _allResults = [];
       _completedSources = 0;
       _totalSources = 0;
+      _currentKeyword = keyword;
     });
 
     try {
@@ -74,8 +137,10 @@ class _SearchScreenState extends State<SearchScreen> {
           if (!mounted) return;
 
           if (data is SearchResult) {
+            _allResults.add(data);
+            // 实时更新排序后的结果
             setState(() {
-              _results.add(data);
+              _results = _sortResults(_allResults, _currentKeyword);
             });
           } else if (data is SearchProgress) {
             setState(() {
@@ -87,6 +152,7 @@ class _SearchScreenState extends State<SearchScreen> {
           if (!mounted) return;
           setState(() {
             _isSearching = false;
+            _results = _sortResults(_allResults, _currentKeyword);
             if (_results.isEmpty) {
               _error = '未找到相关小说';
             }
@@ -125,7 +191,7 @@ class _SearchScreenState extends State<SearchScreen> {
           controller: _controller,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: '搜索小说...',
+            hintText: '搜索书名或作者...',
             border: InputBorder.none,
           ),
           onSubmitted: (_) => _search(),
