@@ -36,9 +36,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
   late int _currentIndex;
   final Map<int, String> _contentCache = {};
   final Map<int, bool> _loadingStates = {};
+  final Map<int, ScrollController> _scrollControllers = {};
 
   bool _showControls = true;
   ReaderSettings _settings = const ReaderSettings();
+
+  // 章节内阅读进度
+  double _chapterProgress = 0.0; // 0.0 - 1.0
 
   @override
   void initState() {
@@ -68,13 +72,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
   void dispose() {
     _pageController.removeListener(_onPageChanged);
     _pageController.dispose();
+    // 释放所有 ScrollController
+    for (final controller in _scrollControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   void _onPageChanged() {
     final newIndex = _pageController.page?.round() ?? _currentIndex;
     if (newIndex != _currentIndex) {
-      setState(() => _currentIndex = newIndex);
+      setState(() {
+        _currentIndex = newIndex;
+        _chapterProgress = 0.0; // 切换章节时重置进度
+      });
 
       // 预加载下一章节
       if (newIndex + 1 < widget.chapters.length &&
@@ -89,6 +100,33 @@ class _ReaderScreenState extends State<ReaderScreen> {
           chapterIndex: newIndex,
           chapterName: widget.chapters[newIndex].name,
         );
+      }
+    }
+  }
+
+  /// 获取或创建章节的 ScrollController
+  ScrollController _getScrollController(int index) {
+    if (!_scrollControllers.containsKey(index)) {
+      final controller = ScrollController();
+      controller.addListener(() => _onScrollChanged(index, controller));
+      _scrollControllers[index] = controller;
+    }
+    return _scrollControllers[index]!;
+  }
+
+  /// 滚动位置变化时更新进度
+  void _onScrollChanged(int index, ScrollController controller) {
+    if (index != _currentIndex) return;
+
+    if (controller.hasClients) {
+      final maxScroll = controller.position.maxScrollExtent;
+      final currentScroll = controller.offset;
+
+      if (maxScroll > 0) {
+        final progress = (currentScroll / maxScroll).clamp(0.0, 1.0);
+        if ((progress - _chapterProgress).abs() > 0.01) {
+          setState(() => _chapterProgress = progress);
+        }
       }
     }
   }
@@ -195,20 +233,37 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // 章节进度条
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              '${_currentIndex + 1} / ${widget.chapters.length}',
-                              style: const TextStyle(color: Colors.white),
+                              '${(_chapterProgress * 100).toInt()}%',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
                             ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: LinearProgressIndicator(
+                                value: _chapterProgress,
+                                backgroundColor: Colors.white24,
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             Text(
-                              widget.chapters[_currentIndex].name,
-                              style: const TextStyle(color: Colors.white70),
+                              '${_currentIndex + 1}/${widget.chapters.length}',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                         Row(
                           children: [
                             Expanded(
@@ -282,6 +337,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       ),
       child: SafeArea(
         child: SingleChildScrollView(
+          controller: _getScrollController(index),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
