@@ -34,19 +34,24 @@ flutter clean && flutter pub get && flutter pub run build_runner build --delete-
 
 ```
 lib/
-├── main.dart              # App entry point, Riverpod ProviderScope
-├── models/                # Data models with JSON serialization
-│   ├── book_source.dart   # BookSource, RuleSearch, RuleToc, RuleContent
-│   └── book.dart          # Book model for bookshelf
-├── services/              # Business logic layer
-│   ├── book_source_service.dart  # Import/parse/save book sources
-│   ├── search_service.dart       # Web scraping engine, rule parser
-│   └── bookshelf_service.dart    # Bookshelf CRUD operations
-└── screens/               # UI layer
-    ├── home_screen.dart   # Tab navigation (Bookshelf, Sources, Settings)
-    ├── search_screen.dart # Multi-source search with streaming results
-    ├── chapter_list_screen.dart  # Chapter list with bookmark toggle
-    └── reader_screen.dart # PageView-based reader with caching
+├── main.dart                    # App entry point, Riverpod ProviderScope
+├── models/                      # Data models with JSON serialization
+│   ├── book_source.dart         # BookSource, RuleSearch, RuleToc, RuleContent
+│   ├── book.dart                # Book model for bookshelf
+│   ├── reader_settings.dart     # Reader settings (font, theme, page turn mode)
+│   └── bookmark.dart            # Bookmark model for chapter bookmarks
+├── services/                    # Business logic layer
+│   ├── book_source_service.dart # Import/parse/save book sources
+│   ├── search_service.dart      # Web scraping engine, rule parser
+│   ├── bookshelf_service.dart   # Bookshelf CRUD operations
+│   ├── reader_settings_service.dart  # Reader settings persistence
+│   ├── chapter_cache_service.dart    # Chapter content persistent cache
+│   └── bookmark_service.dart    # Bookmark management
+└── screens/                     # UI layer
+    ├── home_screen.dart         # Tab navigation (Bookshelf, Sources, Settings)
+    ├── search_screen.dart       # Multi-source search with streaming results
+    ├── chapter_list_screen.dart # Chapter list with search, sort, group
+    └── reader_screen.dart       # PageView-based reader with full features
 ```
 
 ### Key Architectural Patterns
@@ -64,7 +69,7 @@ lib/
 
 1. **Import Book Sources**: JSON file → `BookSourceService.parseBookSources()` → stored in `~/book_sources/sources.json`
 2. **Search**: Keyword → `SearchService.searchStream()` → concurrent requests to all enabled sources → parse HTML/JSON via rules → stream results
-3. **Read**: Chapter URL → `SearchService.getChapterContent()` → fetch HTML → parse content via rules → cache in memory
+3. **Read**: Chapter URL → check `ChapterCacheService` → if not cached, fetch via `SearchService.getChapterContent()` → save to cache
 
 ### Book Source Format
 
@@ -74,6 +79,33 @@ Book sources must be compatible with 阅读3.0 JSON format. Key fields:
 - `ruleSearch`: CSS/JSON selectors for search results
 - `ruleToc`: Chapter list selectors
 - `ruleContent`: Content extraction selectors
+
+## Implemented Features
+
+### Reader Features (ReaderScreen)
+- **Reading Settings**: Font size (12-32), line height (1.2-3.0), 6 themes
+- **Page Turn Modes**: Slide, Cover, Simulation, Scroll
+- **Tap to Turn Page**: Click left/right screen edges to navigate
+- **Chapter Progress**: Real-time progress bar and percentage
+- **Content Caching**: Persistent cache with 30-day expiry
+- **Bookmarks**: Add/remove bookmarks per chapter
+
+### Bookshelf Features (HomeScreen)
+- **Book Management**: Add, remove, update reading progress
+- **Book Info Display**: Cover, author, last read chapter, source
+
+### Book Source Features (HomeScreen - Sources Tab)
+- **Import Sources**: Import JSON files (append mode, won't overwrite)
+- **Enable/Disable**: Toggle individual sources
+- **Delete Sources**: Remove with confirmation dialog
+- **View Modes**: List view / Grouped view by source type
+
+### Chapter List Features (ChapterListScreen)
+- **Search Chapters**: Filter chapters by name
+- **Sort Order**: Ascending / Descending toggle
+- **Group View**: Group by 50 chapters
+- **Quick Jump**: First chapter, Last chapter, Last read position
+- **Visual Indicators**: Highlight current chapter, mark latest chapter
 
 ## Important Implementation Details
 
@@ -91,7 +123,29 @@ When book source rules fail, `_tryCommonContentSelectors()` attempts common nove
 
 ### Chapter Caching
 
-`ReaderScreen` maintains `_contentCache` map for preloading adjacent chapters. Content is fetched on-demand and cached for the session.
+`ChapterCacheService` provides persistent chapter content caching:
+- Uses MD5 hash of chapter URL as cache key
+- Stores in `~/Documents/chapter_cache/` directory
+- 30-day cache expiry with automatic cleanup
+- Check cache before network request
+
+### Reader Settings
+
+`ReaderSettings` model and `ReaderSettingsService` handle:
+- Font size (12-32 range)
+- Line height (1.2-3.0 range)
+- Theme selection (6 preset themes)
+- Page turn mode (slide/cover/simulation/scroll)
+- Tap-to-turn-page toggle
+- All settings persist to `~/Documents/reader_settings.json`
+
+### Page Turn Implementation
+
+- **Slide Mode**: Default PageView horizontal swipe
+- **Cover Mode**: PageView with cover transition
+- **Simulation Mode**: Standard page flip (placeholder)
+- **Scroll Mode**: ListView vertical scrolling
+- **Tap Navigation**: Left 30% = previous, Right 30% = next, Center = toggle controls
 
 ## Linting
 
@@ -100,8 +154,27 @@ The project uses `flutter_lints` with additional rules:
 - `prefer_single_quotes: true`
 - `avoid_print: false` (debugging output is allowed)
 
+## Dependencies
+
+Key dependencies in `pubspec.yaml`:
+- `flutter_riverpod`: State management
+- `dio`: HTTP client
+- `html`: HTML parsing
+- `json_annotation`: JSON serialization
+- `path_provider`: File system access
+- `crypto`: MD5 hashing for cache keys
+- `file_selector`: File picker for importing sources
+
+## Known Issues / TODO
+
+1. **Simulation Page Turn**: Currently uses default PageView, needs custom animation
+2. **Image Support**: Images in chapter content not yet supported
+3. **Book Source Testing**: No validation/test feature for imported sources
+4. **Some book sources may fail**: Due to rule incompatibility or website changes
+
 ## Notes
 
 - Sample book sources available at project root: `书源.json`
 - Data persistence uses simple JSON files in app documents directory (not Isar database despite being listed in dependencies)
 - The app targets Flutter 3.x with Material 3 design
+- All services use singleton pattern via factory constructor
