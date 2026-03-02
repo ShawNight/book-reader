@@ -4,6 +4,7 @@ import '../models/book_source.dart';
 import '../models/book.dart';
 import '../services/search_service.dart';
 import '../services/bookshelf_service.dart';
+import '../services/bookmark_service.dart';
 import 'reader_screen.dart';
 
 /// 章节列表页面
@@ -36,17 +37,32 @@ class ChapterListScreen extends StatefulWidget {
 class _ChapterListScreenState extends State<ChapterListScreen> {
   final SearchService _searchService = SearchService();
   final BookshelfService _bookshelfService = BookshelfService();
+  final BookmarkService _bookmarkService = BookmarkService();
 
   List<Chapter> _chapters = [];
   bool _isLoading = true;
   String? _error;
   bool _isInBookshelf = false;
 
+  // 书签相关
+  Set<int> _bookmarkedChapters = {}; // 有书签的章节索引集合
+
   @override
   void initState() {
     super.initState();
     _checkBookshelf();
     _loadChapters();
+    _loadBookmarkedChapters();
+  }
+
+  /// 加载有书签的章节
+  Future<void> _loadBookmarkedChapters() async {
+    final bookmarks = await _bookmarkService.getBookmarksForBook(widget.bookUrl);
+    if (mounted) {
+      setState(() {
+        _bookmarkedChapters = bookmarks.map((b) => b.chapterIndex).toSet();
+      });
+    }
   }
 
   Future<void> _checkBookshelf() async {
@@ -151,13 +167,13 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
   }
 
   /// 继续阅读
-  void _continueReading() {
+  void _continueReading() async {
     if (_chapters.isEmpty) return;
 
     // 计算有效的章节索引
     final initialIndex = (widget.lastReadChapter ?? 0).clamp(0, _chapters.length - 1);
 
-    Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ReaderScreen(
@@ -170,6 +186,8 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
         ),
       ),
     );
+    // 返回时刷新书签状态
+    _loadBookmarkedChapters();
   }
 
   Widget _buildBody() {
@@ -214,13 +232,22 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
       itemCount: _chapters.length,
       itemBuilder: (context, index) {
         final chapter = _chapters[index];
+        final hasBookmark = _bookmarkedChapters.contains(index);
+
         return ListTile(
           leading: CircleAvatar(
             child: Text('${index + 1}'),
           ),
           title: Text(chapter.name),
-          onTap: () {
-            Navigator.push(
+          trailing: hasBookmark
+              ? Icon(
+                  Icons.bookmark,
+                  size: 20,
+                  color: Theme.of(context).primaryColor,
+                )
+              : null,
+          onTap: () async {
+            await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => ReaderScreen(
@@ -232,6 +259,8 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
                 ),
               ),
             );
+            // 返回时刷新书签状态
+            _loadBookmarkedChapters();
           },
         );
       },

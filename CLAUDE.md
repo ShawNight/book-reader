@@ -53,6 +53,7 @@ lib/
 ├── models/                      # Data models with JSON serialization
 │   ├── book_source.dart         # BookSource, RuleSearch, RuleToc, RuleContent, Chapter
 │   ├── book.dart                # Book model for bookshelf (with progress + scroll position)
+│   ├── bookmark.dart            # Bookmark model for reading bookmarks
 │   ├── reader_settings.dart     # Reader settings (font, theme, spacing, page turn mode, etc.)
 │   ├── source_test_result.dart  # Source test status and result models
 │   └── *.g.dart                 # Generated JSON serialization code
@@ -63,6 +64,7 @@ lib/
 │   ├── bookshelf_service.dart   # Bookshelf CRUD operations
 │   ├── reader_settings_service.dart  # Reader settings persistence
 │   ├── chapter_cache_service.dart    # Chapter content persistent cache
+│   ├── bookmark_service.dart    # Bookmark management (add/remove/list)
 │   └── source_test_service.dart      # Source validity testing service
 ├── widgets/                     # Reusable UI components
 │   └── simulation_page_turn.dart     # Simulation page turn animation widget
@@ -121,7 +123,12 @@ Book sources must be compatible with 阅读3.0 JSON format. Key fields:
 - **Progress Saving**: Auto-save chapter index and scroll position (2s delay)
 - **Progress Restoration**: Resume reading at exact position when reopening
 - **Content Caching**: Persistent cache with 30-day expiry
-- **Bookmarks**: Add/remove bookmarks per chapter (UI placeholder ready)
+- **Bookmarks**: Full bookmark functionality
+  - Add/remove bookmarks at current reading position
+  - Optional notes for each bookmark
+  - Bookmark list dialog with quick navigation
+  - Visual indicator (solid/hollow icon) for bookmark status
+  - Bookmarks persist across sessions
 
 ### Bookshelf Features (HomeScreen)
 - **Book Management**: Add, remove, update reading progress
@@ -161,6 +168,7 @@ Book sources must be compatible with 阅读3.0 JSON format. Key fields:
 - **Continue Reading**: Play button to jump to last read position
 - **Visual Indicators**: Highlight current chapter, mark latest chapter
 - **Bookmark Toggle**: Add/remove from bookshelf via bookmark icon
+- **Bookmark Indicators**: Chapters with bookmarks show bookmark icon
 
 ### Search Features (SearchScreen)
 - **Multi-Source Search**: Concurrent search across all enabled sources
@@ -227,6 +235,7 @@ All data stored in app documents directory:
 ├── bookshelf.json           # Bookshelf data
 ├── reader_settings.json     # Reader settings
 ├── search_history.json      # Search history keywords
+├── bookmarks.json           # Reading bookmarks
 ├── book_sources/
 │   └── sources.json         # Imported book sources
 └── chapter_cache/           # Cached chapter content (MD5 keys)
@@ -256,8 +265,7 @@ Key dependencies in `pubspec.yaml`:
 
 1. **Image Support**: Images in chapter content not yet supported
 2. **Some book sources may fail**: Due to rule incompatibility or website changes
-3. **Bookmark Feature**: Model and UI placeholder exist, full implementation pending
-4. **Reading Statistics**: Total time, word count not tracked
+3. **Reading Statistics**: Total time, word count not tracked
 
 ## Notes
 

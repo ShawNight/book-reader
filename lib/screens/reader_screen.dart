@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/book_source.dart';
+import '../models/bookmark.dart';
 import '../models/reader_settings.dart';
 import '../services/search_service.dart';
 import '../services/bookshelf_service.dart';
 import '../services/reader_settings_service.dart';
 import '../services/chapter_cache_service.dart';
+import '../services/bookmark_service.dart';
 import '../widgets/simulation_page_turn.dart';
 
 /// 阅读页面
@@ -38,6 +40,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final BookshelfService _bookshelfService = BookshelfService();
   final ReaderSettingsService _settingsService = ReaderSettingsService();
   final ChapterCacheService _cacheService = ChapterCacheService();
+  final BookmarkService _bookmarkService = BookmarkService();
   final PageController _pageController = PageController();
   final SimulationPageTurnController _simulationController = SimulationPageTurnController();
 
@@ -48,6 +51,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   bool _showControls = true;
   ReaderSettings _settings = const ReaderSettings();
+
+  // 书签相关
+  List<Bookmark> _bookmarks = [];
+  bool _hasBookmarkAtCurrentPosition = false;
 
   // 章节内阅读进度
   double _chapterProgress = 0.0; // 0.0 - 1.0
@@ -81,6 +88,37 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (mounted) {
       setState(() {
         _settings = _settingsService.settings;
+      });
+      // 加载书签
+      await _loadBookmarks();
+    }
+  }
+
+  /// 加载书签
+  Future<void> _loadBookmarks() async {
+    if (widget.bookUrl == null) return;
+
+    final bookmarks = await _bookmarkService.getBookmarksForBook(widget.bookUrl!);
+    if (mounted) {
+      setState(() {
+        _bookmarks = bookmarks;
+      });
+      _checkBookmarkAtCurrentPosition();
+    }
+  }
+
+  /// 检查当前位置是否有书签
+  Future<void> _checkBookmarkAtCurrentPosition() async {
+    if (widget.bookUrl == null) return;
+
+    final hasBookmark = await _bookmarkService.hasBookmarkAtPosition(
+      widget.bookUrl!,
+      _currentIndex,
+      _chapterProgress,
+    );
+    if (mounted) {
+      setState(() {
+        _hasBookmarkAtCurrentPosition = hasBookmark;
       });
     }
   }
@@ -130,6 +168,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
           chapterName: widget.chapters[newIndex].name,
         );
       }
+
+      // 检查新页面是否有书签
+      _checkBookmarkAtCurrentPosition();
     }
   }
 
@@ -156,6 +197,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
         if ((progress - _chapterProgress).abs() > 0.01) {
           setState(() => _chapterProgress = progress);
           _scheduleProgressSave();
+          // 检查当前位置是否有书签
+          _checkBookmarkAtCurrentPosition();
         }
       }
     }
@@ -455,6 +498,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     onPressed: () => Navigator.pop(context),
                   ),
                   actions: [
+                    IconButton(
+                      icon: Icon(
+                        _hasBookmarkAtCurrentPosition
+                            ? Icons.bookmark
+                            : Icons.bookmark_border,
+                      ),
+                      tooltip: _hasBookmarkAtCurrentPosition ? '移除书签' : '添加书签',
+                      onPressed: () => _toggleBookmark(),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.list_alt),
+                      tooltip: '书签列表',
+                      onPressed: () => _showBookmarkList(),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.settings),
                       onPressed: () => _showSettingsPanel(),
@@ -1071,5 +1128,221 @@ class _ReaderScreenState extends State<ReaderScreen> {
         );
       },
     );
+  }
+
+  /// 切换书签
+  Future<void> _toggleBookmark() async {
+    if (widget.bookUrl == null) return;
+
+    final bookmark = Bookmark(
+      bookUrl: widget.bookUrl!,
+      bookName: widget.bookName,
+      chapterIndex: _currentIndex,
+      chapterName: widget.chapters[_currentIndex].name,
+      scrollPosition: _chapterProgress,
+      createdAt: DateTime.now(),
+    );
+
+    if (_hasBookmarkAtCurrentPosition) {
+      // 删除书签
+      await _bookmarkService.removeBookmark(bookmark);
+      if (mounted) {
+        setState(() {
+          _hasBookmarkAtCurrentPosition = false;
+          _bookmarks.removeWhere((b) => b.uniqueKey == bookmark.uniqueKey);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('书签已移除')),
+        );
+      }
+    } else {
+      // 添加书签（可选输入备注）
+      final note = await _showAddBookmarkDialog();
+      if (note == null) return; // 用户取消
+
+      final newBookmark = bookmark.copyWith(note: note.isEmpty ? null : note);
+      await _bookmarkService.addBookmark(newBookmark);
+      if (mounted) {
+        setState(() {
+          _hasBookmarkAtCurrentPosition = true;
+          _bookmarks.insert(0, newBookmark);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('书签已添加')),
+        );
+      }
+    }
+  }
+
+  /// 显示添加书签对话框（输入备注）
+  Future<String?> _showAddBookmarkDialog() async {
+    final controller = TextEditingController();
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('添加书签'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: '添加备注（可选）',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 2,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 显示书签列表
+  void _showBookmarkList() {
+    if (_bookmarks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂无书签')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Container(
+          height: 400,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '书签列表 (${_bookmarks.length})',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _bookmarks.length,
+                  itemBuilder: (context, index) {
+                    final bookmark = _bookmarks[index];
+                    final isCurrentPosition = bookmark.chapterIndex == _currentIndex &&
+                        (bookmark.scrollPosition - _chapterProgress).abs() < 0.01;
+
+                    return ListTile(
+                      leading: Icon(
+                        Icons.bookmark,
+                        color: isCurrentPosition ? Theme.of(context).primaryColor : null,
+                      ),
+                      title: Text(
+                        bookmark.chapterName,
+                        style: TextStyle(
+                          fontWeight: isCurrentPosition ? FontWeight.bold : null,
+                          color: isCurrentPosition ? Theme.of(context).primaryColor : null,
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('进度: ${(bookmark.scrollPosition * 100).toInt()}%'),
+                          if (bookmark.note != null && bookmark.note!.isNotEmpty)
+                            Text(
+                              '备注: ${bookmark.note}',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          Text(
+                            _formatDateTime(bookmark.createdAt),
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () async {
+                          await _bookmarkService.removeBookmark(bookmark);
+                          if (mounted) {
+                            setState(() {
+                              _bookmarks.removeAt(index);
+                            });
+                            // 更新当前位置书签状态
+                            _checkBookmarkAtCurrentPosition();
+                          }
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('书签已删除')),
+                            );
+                          }
+                        },
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _goToBookmark(bookmark);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 跳转到书签位置
+  void _goToBookmark(Bookmark bookmark) {
+    // 跳转到对应章节
+    _goToChapter(bookmark.chapterIndex);
+
+    // 延迟恢复滚动位置
+    Future.delayed(const Duration(milliseconds: 300), () {
+      _restoreScrollPosition(bookmark.chapterIndex, bookmark.scrollPosition);
+    });
+  }
+
+  /// 格式化日期时间
+  String _formatDateTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays == 0) {
+      if (difference.inHours == 0) {
+        if (difference.inMinutes == 0) {
+          return '刚刚';
+        }
+        return '${difference.inMinutes}分钟前';
+      }
+      return '${difference.inHours}小时前';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}天前';
+    } else {
+      return '${dateTime.month}/${dateTime.day} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    }
   }
 }
