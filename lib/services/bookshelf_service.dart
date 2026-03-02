@@ -87,14 +87,16 @@ class BookshelfService {
     String bookUrl, {
     required int chapterIndex,
     required String chapterName,
+    double? scrollProgress,
   }) async {
     final books = await loadBooks();
     final index = books.indexWhere((b) => b.bookUrl == bookUrl);
-    
+
     if (index >= 0) {
       books[index] = books[index].copyWith(
         lastReadChapter: chapterIndex,
         lastReadChapterName: chapterName,
+        scrollProgress: scrollProgress,
       );
       await saveBooks(books);
     }

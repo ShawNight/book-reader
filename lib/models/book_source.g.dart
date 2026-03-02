@@ -11,58 +11,45 @@ BookSource _$BookSourceFromJson(Map<String, dynamic> json) => BookSource(
       bookSourceUrl: json['bookSourceUrl'] as String,
       bookSourceGroup: json['bookSourceGroup'] as String?,
       bookSourceComment: json['bookSourceComment'] as String?,
-      customOrder: json['customOrder'] as int?,
+      customOrder: (json['customOrder'] as num?)?.toInt(),
       enabled: json['enabled'] as bool?,
       enabledExplore: json['enabledExplore'] as bool?,
       searchUrl: json['searchUrl'] as String?,
       ruleSearch: json['ruleSearch'] == null
           ? null
-          : RuleSearch.fromJson(
-              json['ruleSearch'] as Map<String, dynamic>),
+          : RuleSearch.fromJson(json['ruleSearch'] as Map<String, dynamic>),
       ruleBookInfo: json['ruleBookInfo'] == null
           ? null
-          : RuleBookInfo.fromJson(
-              json['ruleBookInfo'] as Map<String, dynamic>),
+          : RuleBookInfo.fromJson(json['ruleBookInfo'] as Map<String, dynamic>),
       ruleToc: json['ruleToc'] == null
           ? null
           : RuleToc.fromJson(json['ruleToc'] as Map<String, dynamic>),
       ruleContent: json['ruleContent'] == null
           ? null
-          : RuleContent.fromJson(
-              json['ruleContent'] as Map<String, dynamic>),
+          : RuleContent.fromJson(json['ruleContent'] as Map<String, dynamic>),
       exploreUrl: json['exploreUrl'] as String?,
       header: json['header'] as String?,
       concurrentRate: json['concurrentRate'] as String?,
     );
 
-Map<String, dynamic> _$BookSourceToJson(BookSource instance) {
-  final val = <String, dynamic>{
-    'bookSourceName': instance.bookSourceName,
-    'bookSourceUrl': instance.bookSourceUrl,
-  };
-
-  void writeNotNull(String key, dynamic value) {
-    if (value != null) {
-      val[key] = value;
-    }
-  }
-
-  writeNotNull('bookSourceGroup', instance.bookSourceGroup);
-  writeNotNull('bookSourceComment', instance.bookSourceComment);
-  writeNotNull('customOrder', instance.customOrder);
-  writeNotNull('enabled', instance.enabled);
-  writeNotNull('enabledExplore', instance.enabledExplore);
-  writeNotNull('searchUrl', instance.searchUrl);
-  writeNotNull('ruleSearch', instance.ruleSearch?.toJson());
-  writeNotNull('ruleBookInfo', instance.ruleBookInfo?.toJson());
-  writeNotNull('ruleToc', instance.ruleToc?.toJson());
-  writeNotNull('ruleContent', instance.ruleContent?.toJson());
-  writeNotNull('exploreUrl', instance.exploreUrl);
-  writeNotNull('header', instance.header);
-  writeNotNull('concurrentRate', instance.concurrentRate);
-
-  return val;
-}
+Map<String, dynamic> _$BookSourceToJson(BookSource instance) =>
+    <String, dynamic>{
+      'bookSourceName': instance.bookSourceName,
+      'bookSourceUrl': instance.bookSourceUrl,
+      'bookSourceGroup': instance.bookSourceGroup,
+      'bookSourceComment': instance.bookSourceComment,
+      'customOrder': instance.customOrder,
+      'enabled': instance.enabled,
+      'enabledExplore': instance.enabledExplore,
+      'searchUrl': instance.searchUrl,
+      'ruleSearch': instance.ruleSearch?.toJson(),
+      'ruleBookInfo': instance.ruleBookInfo?.toJson(),
+      'ruleToc': instance.ruleToc?.toJson(),
+      'ruleContent': instance.ruleContent?.toJson(),
+      'exploreUrl': instance.exploreUrl,
+      'header': instance.header,
+      'concurrentRate': instance.concurrentRate,
+    };
 
 RuleSearch _$RuleSearchFromJson(Map<String, dynamic> json) => RuleSearch(
       checkKeyWord: json['checkKeyWord'] as String?,
@@ -79,30 +66,21 @@ RuleSearch _$RuleSearchFromJson(Map<String, dynamic> json) => RuleSearch(
       tocUrl: json['tocUrl'] as String?,
     );
 
-Map<String, dynamic> _$RuleSearchToJson(RuleSearch instance) {
-  final val = <String, dynamic>{};
-
-  void writeNotNull(String key, dynamic value) {
-    if (value != null) {
-      val[key] = value;
-    }
-  }
-
-  writeNotNull('checkKeyWord', instance.checkKeyWord);
-  writeNotNull('bookList', instance.bookList);
-  writeNotNull('name', instance.name);
-  writeNotNull('author', instance.author);
-  writeNotNull('intro', instance.intro);
-  writeNotNull('kind', instance.kind);
-  writeNotNull('lastChapter', instance.lastChapter);
-  writeNotNull('updateTime', instance.updateTime);
-  writeNotNull('bookUrl', instance.bookUrl);
-  writeNotNull('coverUrl', instance.coverUrl);
-  writeNotNull('wordCount', instance.wordCount);
-  writeNotNull('tocUrl', instance.tocUrl);
-
-  return val;
-}
+Map<String, dynamic> _$RuleSearchToJson(RuleSearch instance) =>
+    <String, dynamic>{
+      'checkKeyWord': instance.checkKeyWord,
+      'bookList': instance.bookList,
+      'name': instance.name,
+      'author': instance.author,
+      'intro': instance.intro,
+      'kind': instance.kind,
+      'lastChapter': instance.lastChapter,
+      'updateTime': instance.updateTime,
+      'bookUrl': instance.bookUrl,
+      'coverUrl': instance.coverUrl,
+      'wordCount': instance.wordCount,
+      'tocUrl': instance.tocUrl,
+    };
 
 RuleBookInfo _$RuleBookInfoFromJson(Map<String, dynamic> json) => RuleBookInfo(
       init: json['init'] as String?,
@@ -118,29 +96,20 @@ RuleBookInfo _$RuleBookInfoFromJson(Map<String, dynamic> json) => RuleBookInfo(
       canReName: json['canReName'] as String?,
     );
 
-Map<String, dynamic> _$RuleBookInfoToJson(RuleBookInfo instance) {
-  final val = <String, dynamic>{};
-
-  void writeNotNull(String key, dynamic value) {
-    if (value != null) {
-      val[key] = value;
-    }
-  }
-
-  writeNotNull('init', instance.init);
-  writeNotNull('name', instance.name);
-  writeNotNull('author', instance.author);
-  writeNotNull('intro', instance.intro);
-  writeNotNull('kind', instance.kind);
-  writeNotNull('lastChapter', instance.lastChapter);
-  writeNotNull('updateTime', instance.updateTime);
-  writeNotNull('coverUrl', instance.coverUrl);
-  writeNotNull('tocUrl', instance.tocUrl);
-  writeNotNull('wordCount', instance.wordCount);
-  writeNotNull('canReName', instance.canReName);
-
-  return val;
-}
+Map<String, dynamic> _$RuleBookInfoToJson(RuleBookInfo instance) =>
+    <String, dynamic>{
+      'init': instance.init,
+      'name': instance.name,
+      'author': instance.author,
+      'intro': instance.intro,
+      'kind': instance.kind,
+      'lastChapter': instance.lastChapter,
+      'updateTime': instance.updateTime,
+      'coverUrl': instance.coverUrl,
+      'tocUrl': instance.tocUrl,
+      'wordCount': instance.wordCount,
+      'canReName': instance.canReName,
+    };
 
 RuleToc _$RuleTocFromJson(Map<String, dynamic> json) => RuleToc(
       chapterList: json['chapterList'] as String?,
@@ -152,25 +121,15 @@ RuleToc _$RuleTocFromJson(Map<String, dynamic> json) => RuleToc(
       nextTocUrl: json['nextTocUrl'] as String?,
     );
 
-Map<String, dynamic> _$RuleTocToJson(RuleToc instance) {
-  final val = <String, dynamic>{};
-
-  void writeNotNull(String key, dynamic value) {
-    if (value != null) {
-      val[key] = value;
-    }
-  }
-
-  writeNotNull('chapterList', instance.chapterList);
-  writeNotNull('chapterName', instance.chapterName);
-  writeNotNull('chapterUrl', instance.chapterUrl);
-  writeNotNull('isVip', instance.isVip);
-  writeNotNull('isPay', instance.isPay);
-  writeNotNull('updateTime', instance.updateTime);
-  writeNotNull('nextTocUrl', instance.nextTocUrl);
-
-  return val;
-}
+Map<String, dynamic> _$RuleTocToJson(RuleToc instance) => <String, dynamic>{
+      'chapterList': instance.chapterList,
+      'chapterName': instance.chapterName,
+      'chapterUrl': instance.chapterUrl,
+      'isVip': instance.isVip,
+      'isPay': instance.isPay,
+      'updateTime': instance.updateTime,
+      'nextTocUrl': instance.nextTocUrl,
+    };
 
 RuleContent _$RuleContentFromJson(Map<String, dynamic> json) => RuleContent(
       content: json['content'] as String?,
@@ -182,22 +141,13 @@ RuleContent _$RuleContentFromJson(Map<String, dynamic> json) => RuleContent(
       payAction: json['payAction'] as String?,
     );
 
-Map<String, dynamic> _$RuleContentToJson(RuleContent instance) {
-  final val = <String, dynamic>{};
-
-  void writeNotNull(String key, dynamic value) {
-    if (value != null) {
-      val[key] = value;
-    }
-  }
-
-  writeNotNull('content', instance.content);
-  writeNotNull('nextContentUrl', instance.nextContentUrl);
-  writeNotNull('webJs', instance.webJs);
-  writeNotNull('sourceRegex', instance.sourceRegex);
-  writeNotNull('replaceRegex', instance.replaceRegex);
-  writeNotNull('imageStyle', instance.imageStyle);
-  writeNotNull('payAction', instance.payAction);
-
-  return val;
-}
+Map<String, dynamic> _$RuleContentToJson(RuleContent instance) =>
+    <String, dynamic>{
+      'content': instance.content,
+      'nextContentUrl': instance.nextContentUrl,
+      'webJs': instance.webJs,
+      'sourceRegex': instance.sourceRegex,
+      'replaceRegex': instance.replaceRegex,
+      'imageStyle': instance.imageStyle,
+      'payAction': instance.payAction,
+    };

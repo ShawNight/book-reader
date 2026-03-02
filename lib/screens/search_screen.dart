@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/search_service.dart';
 import '../services/bookshelf_service.dart';
 import '../services/book_source_service.dart';
+import '../services/search_history_service.dart';
 import '../models/book.dart';
 import 'chapter_list_screen.dart';
 
@@ -20,8 +21,10 @@ class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _controller = TextEditingController();
   final SearchService _searchService = SearchService();
   final BookSourceService _bookSourceService = BookSourceService();
+  final SearchHistoryService _historyService = SearchHistoryService();
 
   List<SearchResult> _results = [];
+  List<String> _searchHistory = [];
   bool _isSearching = false;
   String? _error;
   int _completedSources = 0;
@@ -29,6 +32,21 @@ class _SearchScreenState extends State<SearchScreen> {
   StreamSubscription? _searchSubscription;
   String _currentKeyword = '';
   List<SearchResult> _allResults = []; // 存储所有未排序的结果
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final history = await _historyService.loadHistory();
+    if (mounted) {
+      setState(() {
+        _searchHistory = history;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -99,6 +117,10 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<void> _search() async {
     final keyword = _controller.text.trim();
     if (keyword.isEmpty) return;
+
+    // 保存到搜索历史
+    await _historyService.addKeyword(keyword);
+    _loadHistory();
 
     // 取消之前的搜索
     _searchSubscription?.cancel();
@@ -292,11 +314,95 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  /// 构建空视图
+  /// 构建空视图（显示搜索历史）
   Widget _buildEmpty() {
-    return const Center(
-      child: Text('输入关键词搜索小说'),
+    if (_searchHistory.isEmpty) {
+      return const Center(
+        child: Text('输入关键词搜索小说'),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 历史记录标题栏
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '搜索历史',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              TextButton(
+                onPressed: _clearHistory,
+                child: const Text('清空'),
+              ),
+            ],
+          ),
+        ),
+        // 历史记录列表
+        Expanded(
+          child: ListView.builder(
+            itemCount: _searchHistory.length,
+            itemBuilder: (context, index) {
+              final keyword = _searchHistory[index];
+              return ListTile(
+                leading: const Icon(Icons.history, size: 20),
+                title: Text(keyword),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () => _removeHistoryItem(keyword),
+                ),
+                onTap: () => _searchWithKeyword(keyword),
+              );
+            },
+          ),
+        ),
+      ],
     );
+  }
+
+  /// 使用指定关键词搜索
+  void _searchWithKeyword(String keyword) {
+    _controller.text = keyword;
+    _search();
+  }
+
+  /// 删除单条历史记录
+  Future<void> _removeHistoryItem(String keyword) async {
+    await _historyService.removeKeyword(keyword);
+    _loadHistory();
+  }
+
+  /// 清空所有历史记录
+  Future<void> _clearHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清空搜索历史'),
+        content: const Text('确定要清空所有搜索历史吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _historyService.clearHistory();
+      _loadHistory();
+    }
   }
 
   /// 构建结果列表

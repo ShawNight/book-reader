@@ -17,12 +17,24 @@ class ReaderSettings {
   /// 左右边距
   final double horizontalPadding;
 
+  /// 段间距 (0-24)
+  final double paragraphSpacing;
+
+  /// 首行缩进字符数 (0-4)
+  final double indentSize;
+
+  /// 是否显示章节标题
+  final bool showChapterTitle;
+
   const ReaderSettings({
     this.fontSize = 18.0,
     this.lineHeight = 1.8,
     this.themeIndex = 0,
     this.verticalPadding = 16.0,
     this.horizontalPadding = 16.0,
+    this.paragraphSpacing = 8.0,
+    this.indentSize = 2.0,
+    this.showChapterTitle = true,
   });
 
   /// 预设主题列表
@@ -69,6 +81,9 @@ class ReaderSettings {
     int? themeIndex,
     double? verticalPadding,
     double? horizontalPadding,
+    double? paragraphSpacing,
+    double? indentSize,
+    bool? showChapterTitle,
   }) {
     return ReaderSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -76,6 +91,9 @@ class ReaderSettings {
       themeIndex: themeIndex ?? this.themeIndex,
       verticalPadding: verticalPadding ?? this.verticalPadding,
       horizontalPadding: horizontalPadding ?? this.horizontalPadding,
+      paragraphSpacing: paragraphSpacing ?? this.paragraphSpacing,
+      indentSize: indentSize ?? this.indentSize,
+      showChapterTitle: showChapterTitle ?? this.showChapterTitle,
     );
   }
 
@@ -87,6 +105,9 @@ class ReaderSettings {
       'themeIndex': themeIndex,
       'verticalPadding': verticalPadding,
       'horizontalPadding': horizontalPadding,
+      'paragraphSpacing': paragraphSpacing,
+      'indentSize': indentSize,
+      'showChapterTitle': showChapterTitle,
     };
   }
 
@@ -98,6 +119,9 @@ class ReaderSettings {
       themeIndex: json['themeIndex'] as int? ?? 0,
       verticalPadding: (json['verticalPadding'] as num?)?.toDouble() ?? 16.0,
       horizontalPadding: (json['horizontalPadding'] as num?)?.toDouble() ?? 16.0,
+      paragraphSpacing: (json['paragraphSpacing'] as num?)?.toDouble() ?? 8.0,
+      indentSize: (json['indentSize'] as num?)?.toDouble() ?? 2.0,
+      showChapterTitle: json['showChapterTitle'] as bool? ?? true,
     );
   }
 }

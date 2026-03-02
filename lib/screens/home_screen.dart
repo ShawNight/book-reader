@@ -3,10 +3,13 @@ import 'package:file_selector/file_selector.dart';
 
 import '../services/book_source_service.dart';
 import '../services/bookshelf_service.dart';
+import '../services/search_service.dart';
 import '../models/book_source.dart';
 import '../models/book.dart';
 import 'search_screen.dart';
 import 'chapter_list_screen.dart';
+import 'reader_screen.dart';
+import 'source_purify_screen.dart';
 
 /// 首页 - 书架页面
 class HomeScreen extends StatefulWidget {
@@ -192,19 +195,29 @@ class _BookshelfPageState extends State<_BookshelfPage> {
               );
 
               if (!mounted) return;
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ChapterListScreen(
-                    bookUrl: book.bookUrl,
-                    bookName: book.name,
-                    source: source,
-                    coverUrl: book.coverUrl,
-                    intro: book.intro,
-                    latestChapter: book.latestChapter,
+
+              // 检查是否有阅读记录
+              if (book.lastReadChapter != null) {
+                // 有阅读记录，直接进入阅读器
+                await _openReaderDirectly(book, source);
+              } else {
+                // 首次阅读，进入章节列表
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ChapterListScreen(
+                      bookUrl: book.bookUrl,
+                      bookName: book.name,
+                      source: source,
+                      coverUrl: book.coverUrl,
+                      intro: book.intro,
+                      latestChapter: book.latestChapter,
+                      lastReadChapter: book.lastReadChapter,
+                      scrollProgress: book.scrollProgress,
+                    ),
                   ),
-                ),
-              );
+                );
+              }
               // 返回后刷新书架
               _loadBooks();
             },
@@ -221,6 +234,63 @@ class _BookshelfPageState extends State<_BookshelfPage> {
         SnackBar(content: Text('《${book.name}》已从书架移除')),
       );
       _loadBooks();
+    }
+  }
+
+  /// 直接打开阅读器到上次阅读位置
+  Future<void> _openReaderDirectly(Book book, BookSource source) async {
+    // 显示加载指示器
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      // 加载章节列表
+      final searchService = SearchService();
+      final chapters = await searchService.getChapters(book.bookUrl, source);
+
+      if (!mounted) return;
+
+      // 关闭加载指示器
+      Navigator.pop(context);
+
+      if (chapters.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未找到章节')),
+        );
+        return;
+      }
+
+      // 计算有效的章节索引
+      final initialIndex = (book.lastReadChapter ?? 0).clamp(0, chapters.length - 1);
+
+      // 跳转到阅读器
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ReaderScreen(
+            chapters: chapters,
+            initialIndex: initialIndex,
+            source: source,
+            bookName: book.name,
+            bookUrl: book.bookUrl,
+            initialScrollProgress: book.scrollProgress,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      // 关闭加载指示器
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('加载失败：$e')),
+      );
     }
   }
 }
@@ -297,6 +367,20 @@ class _BookSourcePageState extends State<_BookSourcePage> {
             icon: const Icon(Icons.add),
             onPressed: _importBookSource,
           ),
+          if (_sources.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.cleaning_services),
+              tooltip: '书源净化',
+              onPressed: () async {
+                final result = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SourcePurifyScreen(sources: _sources),
+                  ),
+                );
+                if (result == true) _loadSources();
+              },
+            ),
         ],
       ),
       body: _buildBody(),

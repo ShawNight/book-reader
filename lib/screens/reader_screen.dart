@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/book_source.dart';
@@ -14,6 +16,7 @@ class ReaderScreen extends StatefulWidget {
   final BookSource source;
   final String bookName;
   final String? bookUrl;
+  final double? initialScrollProgress; // 初始滚动进度
 
   const ReaderScreen({
     super.key,
@@ -22,6 +25,7 @@ class ReaderScreen extends StatefulWidget {
     required this.source,
     required this.bookName,
     this.bookUrl,
+    this.initialScrollProgress,
   });
 
   @override
@@ -45,6 +49,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   // 章节内阅读进度
   double _chapterProgress = 0.0; // 0.0 - 1.0
+
+  // 延迟保存 Timer
+  Timer? _saveProgressTimer;
+
+  // 是否已恢复初始滚动位置
+  bool _hasRestoredInitialProgress = false;
 
   @override
   void initState() {
@@ -75,6 +85,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   void dispose() {
+    _saveProgressTimer?.cancel();
+
+    // 退出时保存当前进度（章节 + 滚动位置）
+    if (widget.bookUrl != null) {
+      _bookshelfService.updateReadProgress(
+        widget.bookUrl!,
+        chapterIndex: _currentIndex,
+        chapterName: widget.chapters[_currentIndex].name,
+        scrollProgress: _chapterProgress,
+      );
+    }
+
     _pageController.removeListener(_onPageChanged);
     _pageController.dispose();
     // 释放所有 ScrollController
@@ -131,8 +153,37 @@ class _ReaderScreenState extends State<ReaderScreen> {
         final progress = (currentScroll / maxScroll).clamp(0.0, 1.0);
         if ((progress - _chapterProgress).abs() > 0.01) {
           setState(() => _chapterProgress = progress);
+          _scheduleProgressSave();
         }
       }
+    }
+  }
+
+  /// 延迟保存进度（滚动停止 2 秒后保存）
+  void _scheduleProgressSave() {
+    _saveProgressTimer?.cancel();
+    _saveProgressTimer = Timer(const Duration(seconds: 2), () {
+      if (widget.bookUrl != null && mounted) {
+        _bookshelfService.updateReadProgress(
+          widget.bookUrl!,
+          chapterIndex: _currentIndex,
+          chapterName: widget.chapters[_currentIndex].name,
+          scrollProgress: _chapterProgress,
+        );
+        print('已保存阅读进度: 章节 $_currentIndex, 进度 ${(_chapterProgress * 100).toInt()}%');
+      }
+    });
+  }
+
+  /// 恢复滚动位置
+  void _restoreScrollPosition(int index, double progress) {
+    final controller = _scrollControllers[index];
+    if (controller != null && controller.hasClients) {
+      final maxScroll = controller.position.maxScrollExtent;
+      final targetScroll = (maxScroll * progress).clamp(0.0, maxScroll);
+      controller.jumpTo(targetScroll);
+      setState(() => _chapterProgress = progress);
+      print('已恢复滚动位置: ${(progress * 100).toInt()}%');
     }
   }
 
@@ -353,6 +404,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
       );
     }
 
+    // 恢复初始滚动位置（仅首次加载当前章节时）
+    if (index == widget.initialIndex &&
+        !_hasRestoredInitialProgress &&
+        widget.initialScrollProgress != null &&
+        widget.initialScrollProgress! > 0) {
+      _hasRestoredInitialProgress = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _restoreScrollPosition(index, widget.initialScrollProgress!);
+      });
+    }
+
+    // 过滤内容中可能包含的章节名称
+    final chapterName = widget.chapters[index].name;
+    final filteredContent = _filterChapterName(content, chapterName);
+
     return Container(
       color: theme.backgroundColor,
       padding: EdgeInsets.symmetric(
@@ -366,30 +432,100 @@ class _ReaderScreenState extends State<ReaderScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 章节标题
-              Text(
-                widget.chapters[index].name,
-                style: TextStyle(
-                  fontSize: _settings.fontSize + 2,
-                  fontWeight: FontWeight.bold,
-                  color: theme.textColor,
+              if (_settings.showChapterTitle) ...[
+                Center(
+                  child: Text(
+                    chapterName,
+                    style: TextStyle(
+                      fontSize: _settings.fontSize + 4,
+                      fontWeight: FontWeight.bold,
+                      color: theme.textColor,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
-              ),
-              SizedBox(height: _settings.lineHeight * 10),
-              // 章节内容
-              Text(
-                content,
-                style: TextStyle(
-                  fontSize: _settings.fontSize,
-                  height: _settings.lineHeight,
-                  color: theme.textColor,
+                SizedBox(height: _settings.lineHeight * 8),
+                // 分隔线
+                Divider(
+                  color: theme.textColor.withOpacity(0.2),
+                  height: 1,
                 ),
-              ),
+                SizedBox(height: _settings.lineHeight * 12),
+              ],
+              // 章节内容（按段落渲染）
+              _buildContentText(filteredContent, theme),
               const SizedBox(height: 48),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// 过滤内容开头的章节名称
+  String _filterChapterName(String content, String chapterName) {
+    // 移除开头可能的章节名称
+    if (content.startsWith(chapterName)) {
+      content = content.substring(chapterName.length).trim();
+    }
+    // 移除开头可能的换行符
+    while (content.startsWith('\n')) {
+      content = content.substring(1);
+    }
+    return content;
+  }
+
+  /// 构建正文内容（按段落渲染）
+  Widget _buildContentText(String content, ReaderTheme theme) {
+    // 按段落分割（支持多种换行符）
+    final paragraphs = content
+        .split(RegExp(r'\n+'))
+        .where((p) => p.trim().isNotEmpty)
+        .toList();
+
+    if (paragraphs.isEmpty) {
+      return Text(
+        content,
+        style: TextStyle(
+          fontSize: _settings.fontSize,
+          height: _settings.lineHeight,
+          color: theme.textColor,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: paragraphs.map((paragraph) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: _settings.paragraphSpacing),
+          child: Text(
+            _addIndent(paragraph.trim()),
+            style: TextStyle(
+              fontSize: _settings.fontSize,
+              height: _settings.lineHeight,
+              color: theme.textColor,
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// 添加首行缩进
+  String _addIndent(String paragraph) {
+    // 如果已经有缩进（全角空格开头），不再添加
+    if (_settings.indentSize <= 0) {
+      return paragraph;
+    }
+    // 检查是否已经有缩进
+    if (paragraph.startsWith('　') || paragraph.startsWith(' ')) {
+      return paragraph;
+    }
+    // 添加全角空格作为缩进
+    final indent = '　' * _settings.indentSize.toInt();
+    return indent + paragraph;
   }
 
   void _showChapterList() {
@@ -552,6 +688,92 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ),
 
                   const SizedBox(height: 16),
+
+                  // 段间距调节
+                  Row(
+                    children: [
+                      const Text('段间距'),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Slider(
+                          value: _settings.paragraphSpacing,
+                          min: 0,
+                          max: 24,
+                          divisions: 24,
+                          label: _settings.paragraphSpacing.round().toString(),
+                          onChanged: (value) {
+                            setModalState(() {
+                              _settings = _settings.copyWith(paragraphSpacing: value);
+                            });
+                            setState(() {});
+                            _settingsService.saveSettings(_settings);
+                          },
+                        ),
+                      ),
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          _settings.paragraphSpacing.round().toString(),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 首行缩进调节
+                  Row(
+                    children: [
+                      const Text('首行缩进'),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Slider(
+                          value: _settings.indentSize,
+                          min: 0,
+                          max: 4,
+                          divisions: 4,
+                          label: _settings.indentSize.round().toString(),
+                          onChanged: (value) {
+                            setModalState(() {
+                              _settings = _settings.copyWith(indentSize: value);
+                            });
+                            setState(() {});
+                            _settingsService.saveSettings(_settings);
+                          },
+                        ),
+                      ),
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          _settings.indentSize.round().toString(),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 章节标题显示开关
+                  Row(
+                    children: [
+                      const Text('显示章节标题'),
+                      const Spacer(),
+                      Switch(
+                        value: _settings.showChapterTitle,
+                        onChanged: (value) {
+                          setModalState(() {
+                            _settings = _settings.copyWith(showChapterTitle: value);
+                          });
+                          setState(() {});
+                          _settingsService.saveSettings(_settings);
+                        },
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 24),
 
                   // 主题选择
                   const Align(

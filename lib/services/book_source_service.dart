@@ -70,4 +70,32 @@ class BookSourceService {
     }
     return [];
   }
+
+  /// 批量删除书源
+  Future<int> removeBookSources(List<String> sourceUrls) async {
+    final sources = await loadBookSources();
+    final urlSet = sourceUrls.toSet();
+    final remaining = sources.where((s) => !urlSet.contains(s.bookSourceUrl)).toList();
+    final removedCount = sources.length - remaining.length;
+
+    if (removedCount > 0) {
+      await saveBookSources(remaining);
+    }
+
+    return removedCount;
+  }
+
+  /// 删除单个书源
+  Future<bool> removeBookSource(String sourceUrl) async {
+    final sources = await loadBookSources();
+    final index = sources.indexWhere((s) => s.bookSourceUrl == sourceUrl);
+
+    if (index >= 0) {
+      sources.removeAt(index);
+      await saveBookSources(sources);
+      return true;
+    }
+
+    return false;
+  }
 }

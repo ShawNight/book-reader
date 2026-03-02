@@ -14,6 +14,8 @@ class ChapterListScreen extends StatefulWidget {
   final String? coverUrl;
   final String? intro;
   final String? latestChapter;
+  final int? lastReadChapter;
+  final double? scrollProgress;
 
   const ChapterListScreen({
     super.key,
@@ -23,6 +25,8 @@ class ChapterListScreen extends StatefulWidget {
     this.coverUrl,
     this.intro,
     this.latestChapter,
+    this.lastReadChapter,
+    this.scrollProgress,
   });
 
   @override
@@ -83,6 +87,12 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
       appBar: AppBar(
         title: Text(widget.bookName),
         actions: [
+          if (widget.lastReadChapter != null)
+            IconButton(
+              icon: const Icon(Icons.play_arrow),
+              tooltip: '继续阅读',
+              onPressed: _isLoading ? null : _continueReading,
+            ),
           IconButton(
             icon: Icon(
               _isInBookshelf ? Icons.bookmark : Icons.bookmark_border,
@@ -124,7 +134,7 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
           sourceUrl: widget.source.bookSourceUrl,
           addedTime: DateTime.now(),
         );
-        
+
         await _bookshelfService.addBook(book);
         if (!mounted) return;
         setState(() => _isInBookshelf = true);
@@ -138,6 +148,28 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
         SnackBar(content: Text('操作失败：$e')),
       );
     }
+  }
+
+  /// 继续阅读
+  void _continueReading() {
+    if (_chapters.isEmpty) return;
+
+    // 计算有效的章节索引
+    final initialIndex = (widget.lastReadChapter ?? 0).clamp(0, _chapters.length - 1);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReaderScreen(
+          chapters: _chapters,
+          initialIndex: initialIndex,
+          source: widget.source,
+          bookName: widget.bookName,
+          bookUrl: widget.bookUrl,
+          initialScrollProgress: widget.scrollProgress,
+        ),
+      ),
+    );
   }
 
   Widget _buildBody() {

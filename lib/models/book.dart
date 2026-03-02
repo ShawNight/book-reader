@@ -16,6 +16,7 @@ class Book {
   final DateTime addedTime;
   final int? lastReadChapter;
   final String? lastReadChapterName;
+  final double? scrollProgress; // 章节内滚动进度 (0.0 - 1.0)
 
   Book({
     required this.name,
@@ -29,6 +30,7 @@ class Book {
     required this.addedTime,
     this.lastReadChapter,
     this.lastReadChapterName,
+    this.scrollProgress,
   });
 
   factory Book.fromJson(Map<String, dynamic> json) => _$BookFromJson(json);
@@ -39,6 +41,7 @@ class Book {
     int? lastReadChapter,
     String? lastReadChapterName,
     String? latestChapter,
+    double? scrollProgress,
   }) {
     return Book(
       name: name,
@@ -52,6 +55,7 @@ class Book {
       addedTime: addedTime,
       lastReadChapter: lastReadChapter ?? this.lastReadChapter,
       lastReadChapterName: lastReadChapterName ?? this.lastReadChapterName,
+      scrollProgress: scrollProgress ?? this.scrollProgress,
     );
   }
 }
