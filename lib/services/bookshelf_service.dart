@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/book.dart';
+import '../models/reader_settings.dart';
 
 /// 书架服务 - 管理收藏的书籍
 class BookshelfService {
@@ -97,6 +98,7 @@ class BookshelfService {
         lastReadChapter: chapterIndex,
         lastReadChapterName: chapterName,
         scrollProgress: scrollProgress,
+        lastReadTime: DateTime.now(),
       );
       await saveBooks(books);
     }
@@ -116,5 +118,43 @@ class BookshelfService {
     } catch (e) {
       return null;
     }
+  }
+
+  /// 对书架书籍进行排序
+  List<Book> sortBooks(List<Book> books, BookshelfSortMode sortMode, bool ascending) {
+    final sortedBooks = List<Book>.from(books);
+
+    switch (sortMode) {
+      case BookshelfSortMode.addedTime:
+        sortedBooks.sort((a, b) => a.addedTime.compareTo(b.addedTime));
+        break;
+      case BookshelfSortMode.name:
+        sortedBooks.sort((a, b) => a.name.compareTo(b.name));
+        break;
+      case BookshelfSortMode.author:
+        sortedBooks.sort((a, b) => a.author.compareTo(b.author));
+        break;
+      case BookshelfSortMode.lastReadTime:
+        sortedBooks.sort((a, b) {
+          final aTime = a.lastReadTime ?? DateTime(1970);
+          final bTime = b.lastReadTime ?? DateTime(1970);
+          return aTime.compareTo(bTime);
+        });
+        break;
+      case BookshelfSortMode.readProgress:
+        sortedBooks.sort((a, b) {
+          // 计算阅读进度：优先使用 lastReadChapter，没有则为 -1
+          final aProgress = a.lastReadChapter ?? -1;
+          final bProgress = b.lastReadChapter ?? -1;
+          return aProgress.compareTo(bProgress);
+        });
+        break;
+    }
+
+    // 如果是降序，反转列表
+    if (!ascending) {
+      return sortedBooks.reversed.toList();
+    }
+    return sortedBooks;
   }
 }

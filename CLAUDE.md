@@ -129,6 +129,10 @@ Book sources must be compatible with 阅读3.0 JSON format. Key fields:
 - **Reading Progress**: Auto-save last chapter and scroll position, display "读到：第X章"
 - **Direct Reading**: Click book to open at last read position (skip chapter list)
 - **Swipe to Delete**: Left swipe reveals delete action
+- **Sorting**: Multiple sorting options with persistence
+  - Sort by: Added time (default), Name, Author, Last read time, Read progress
+  - Toggle ascending/descending by clicking same sort option
+  - Settings saved to reader_settings.json
 
 ### Book Source Features (HomeScreen - Sources Tab)
 - **Import Sources**: Import JSON files (append mode, won't overwrite)
@@ -193,6 +197,8 @@ When book source rules fail, `_tryCommonContentSelectors()` attempts common nove
 - indentSize: double (0-4, default 2)
 - showChapterTitle: bool (default true)
 - pageTurnModeIndex: int (0-3, default 0) // 0=slide, 1=cover, 2=simulation, 3=scroll
+- bookshelfSortModeIndex: int (0-4, default 0) // 0=addedTime, 1=name, 2=author, 3=lastReadTime, 4=readProgress
+- bookshelfSortAscending: bool (default false)
 ```
 
 ### Page Turn Implementation
@@ -245,9 +251,8 @@ Key dependencies in `pubspec.yaml`:
 1. **Image Support**: Images in chapter content not yet supported
 2. **Some book sources may fail**: Due to rule incompatibility or website changes
 3. **Bookmark Feature**: Model and UI placeholder exist, full implementation pending
-4. **Bookshelf Sorting**: Currently only by add time (newest first)
-5. **Batch Book Management**: Multi-select delete not implemented
-6. **Reading Statistics**: Total time, word count not tracked
+4. **Batch Book Management**: Multi-select delete not implemented
+5. **Reading Statistics**: Total time, word count not tracked
 
 ## Notes
 

@@ -1,5 +1,41 @@
 import 'package:flutter/material.dart';
 
+/// 书架排序方式枚举
+enum BookshelfSortMode {
+  /// 按添加时间（默认）
+  addedTime,
+  /// 按书名
+  name,
+  /// 按作者
+  author,
+  /// 按最近阅读时间
+  lastReadTime,
+  /// 按阅读进度
+  readProgress,
+}
+
+/// 书架排序方式扩展方法
+extension BookshelfSortModeExtension on BookshelfSortMode {
+  String get displayName {
+    switch (this) {
+      case BookshelfSortMode.addedTime:
+        return '添加时间';
+      case BookshelfSortMode.name:
+        return '书名';
+      case BookshelfSortMode.author:
+        return '作者';
+      case BookshelfSortMode.lastReadTime:
+        return '最近阅读';
+      case BookshelfSortMode.readProgress:
+        return '阅读进度';
+    }
+  }
+
+  static BookshelfSortMode fromIndex(int index) {
+    return BookshelfSortMode.values[index.clamp(0, BookshelfSortMode.values.length - 1)];
+  }
+}
+
 /// 翻页模式枚举
 enum PageTurnMode {
   /// 滑动翻页
@@ -61,6 +97,12 @@ class ReaderSettings {
   /// 翻页模式
   final int pageTurnModeIndex;
 
+  /// 书架排序方式索引
+  final int bookshelfSortModeIndex;
+
+  /// 书架排序是否升序
+  final bool bookshelfSortAscending;
+
   const ReaderSettings({
     this.fontSize = 18.0,
     this.lineHeight = 1.8,
@@ -71,10 +113,15 @@ class ReaderSettings {
     this.indentSize = 2.0,
     this.showChapterTitle = true,
     this.pageTurnModeIndex = 0,
+    this.bookshelfSortModeIndex = 0,
+    this.bookshelfSortAscending = false,
   });
 
   /// 获取当前翻页模式
   PageTurnMode get pageTurnMode => PageTurnModeExtension.fromIndex(pageTurnModeIndex);
+
+  /// 获取当前书架排序模式
+  BookshelfSortMode get bookshelfSortMode => BookshelfSortModeExtension.fromIndex(bookshelfSortModeIndex);
 
   /// 预设主题列表
   static const List<ReaderTheme> themes = [
@@ -124,6 +171,8 @@ class ReaderSettings {
     double? indentSize,
     bool? showChapterTitle,
     int? pageTurnModeIndex,
+    int? bookshelfSortModeIndex,
+    bool? bookshelfSortAscending,
   }) {
     return ReaderSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -135,6 +184,8 @@ class ReaderSettings {
       indentSize: indentSize ?? this.indentSize,
       showChapterTitle: showChapterTitle ?? this.showChapterTitle,
       pageTurnModeIndex: pageTurnModeIndex ?? this.pageTurnModeIndex,
+      bookshelfSortModeIndex: bookshelfSortModeIndex ?? this.bookshelfSortModeIndex,
+      bookshelfSortAscending: bookshelfSortAscending ?? this.bookshelfSortAscending,
     );
   }
 
@@ -150,6 +201,8 @@ class ReaderSettings {
       'indentSize': indentSize,
       'showChapterTitle': showChapterTitle,
       'pageTurnModeIndex': pageTurnModeIndex,
+      'bookshelfSortModeIndex': bookshelfSortModeIndex,
+      'bookshelfSortAscending': bookshelfSortAscending,
     };
   }
 
@@ -165,6 +218,8 @@ class ReaderSettings {
       indentSize: (json['indentSize'] as num?)?.toDouble() ?? 2.0,
       showChapterTitle: json['showChapterTitle'] as bool? ?? true,
       pageTurnModeIndex: json['pageTurnModeIndex'] as int? ?? 0,
+      bookshelfSortModeIndex: json['bookshelfSortModeIndex'] as int? ?? 0,
+      bookshelfSortAscending: json['bookshelfSortAscending'] as bool? ?? false,
     );
   }
 }

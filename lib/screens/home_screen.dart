@@ -4,8 +4,10 @@ import 'package:file_selector/file_selector.dart';
 import '../services/book_source_service.dart';
 import '../services/bookshelf_service.dart';
 import '../services/search_service.dart';
+import '../services/reader_settings_service.dart';
 import '../models/book_source.dart';
 import '../models/book.dart';
+import '../models/reader_settings.dart';
 import 'search_screen.dart';
 import 'chapter_list_screen.dart';
 import 'reader_screen.dart';
@@ -69,23 +71,56 @@ class _BookshelfPage extends StatefulWidget {
 
 class _BookshelfPageState extends State<_BookshelfPage> {
   final BookshelfService _bookshelfService = BookshelfService();
+  final ReaderSettingsService _settingsService = ReaderSettingsService();
   List<Book> _books = [];
   bool _isLoading = true;
+  BookshelfSortMode _sortMode = BookshelfSortMode.addedTime;
+  bool _sortAscending = false;
 
   @override
   void initState() {
     super.initState();
+    _sortMode = _settingsService.settings.bookshelfSortMode;
+    _sortAscending = _settingsService.settings.bookshelfSortAscending;
     _loadBooks();
   }
 
   Future<void> _loadBooks() async {
     final books = await _bookshelfService.loadBooks();
+    final sortedBooks = _bookshelfService.sortBooks(books, _sortMode, _sortAscending);
     if (mounted) {
       setState(() {
-        _books = books;
+        _books = sortedBooks;
         _isLoading = false;
       });
     }
+  }
+
+  void _changeSortMode(BookshelfSortMode newMode) {
+    if (_sortMode == newMode) {
+      // 同一排序模式，切换升序/降序
+      setState(() {
+        _sortAscending = !_sortAscending;
+      });
+    } else {
+      // 不同排序模式，切换模式并重置为降序
+      setState(() {
+        _sortMode = newMode;
+        _sortAscending = false;
+      });
+    }
+    // 保存设置
+    _saveSortSettings();
+    // 重新排序
+    _books = _bookshelfService.sortBooks(_books, _sortMode, _sortAscending);
+  }
+
+  Future<void> _saveSortSettings() async {
+    final newSettings = _settingsService.settings.copyWith(
+      bookshelfSortModeIndex: _sortMode.index,
+      bookshelfSortAscending: _sortAscending,
+    );
+    await _settingsService.saveSettings(newSettings);
   }
 
   @override
@@ -94,6 +129,45 @@ class _BookshelfPageState extends State<_BookshelfPage> {
       appBar: AppBar(
         title: const Text('我的书架'),
         actions: [
+          // 排序按钮
+          PopupMenuButton<BookshelfSortMode>(
+            icon: const Icon(Icons.sort),
+            tooltip: '排序方式',
+            initialValue: _sortMode,
+            onSelected: _changeSortMode,
+            itemBuilder: (context) {
+              return BookshelfSortMode.values.map((mode) {
+                final isSelected = _sortMode == mode;
+                return PopupMenuItem<BookshelfSortMode>(
+                  value: mode,
+                  child: Row(
+                    children: [
+                      Icon(
+                        isSelected
+                            ? (_sortAscending
+                                ? Icons.arrow_upward
+                                : Icons.arrow_downward)
+                            : null,
+                        size: 18,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        mode.displayName,
+                        style: TextStyle(
+                          color: isSelected
+                              ? Theme.of(context).primaryColor
+                              : null,
+                          fontWeight:
+                              isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList();
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () async {
