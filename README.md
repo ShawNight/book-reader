@@ -78,7 +78,7 @@ flutter build apk --release  # Release 版本
 ### 翻页模式
 - **滑动翻页** - 左右滑动切换页面
 - **覆盖翻页** - 页面覆盖效果
-- **仿真翻页** - 书页翻转效果（待完善）
+- **仿真翻页** - 真实书页翻转动画（含阴影和边缘效果）
 - **滚动模式** - 垂直滚动阅读
 
 ### 触屏操作
@@ -173,6 +173,8 @@ lib/
 │   ├── reader_settings_service.dart
 │   ├── chapter_cache_service.dart
 │   └── source_test_service.dart  # 书源测试服务
+├── widgets/                  # 可复用组件
+│   └── simulation_page_turn.dart  # 仿真翻页动画
 └── screens/                  # 界面
     ├── home_screen.dart
     ├── search_screen.dart
@@ -183,7 +185,6 @@ lib/
 
 ## 已知问题
 
-- [ ] 仿真翻页效果待完善
 - [ ] 章节内图片暂不支持
 - [ ] 部分书源规则可能不兼容
 - [ ] 书架仅支持按添加时间排序

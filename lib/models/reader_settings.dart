@@ -1,5 +1,37 @@
 import 'package:flutter/material.dart';
 
+/// 翻页模式枚举
+enum PageTurnMode {
+  /// 滑动翻页
+  slide,
+  /// 覆盖翻页
+  cover,
+  /// 仿真翻页
+  simulation,
+  /// 滚动翻页
+  scroll,
+}
+
+/// 翻页模式扩展方法
+extension PageTurnModeExtension on PageTurnMode {
+  String get displayName {
+    switch (this) {
+      case PageTurnMode.slide:
+        return '滑动';
+      case PageTurnMode.cover:
+        return '覆盖';
+      case PageTurnMode.simulation:
+        return '仿真';
+      case PageTurnMode.scroll:
+        return '滚动';
+    }
+  }
+
+  static PageTurnMode fromIndex(int index) {
+    return PageTurnMode.values[index.clamp(0, PageTurnMode.values.length - 1)];
+  }
+}
+
 /// 阅读设置模型
 class ReaderSettings {
   /// 字体大小 (12-32)
@@ -26,6 +58,9 @@ class ReaderSettings {
   /// 是否显示章节标题
   final bool showChapterTitle;
 
+  /// 翻页模式
+  final int pageTurnModeIndex;
+
   const ReaderSettings({
     this.fontSize = 18.0,
     this.lineHeight = 1.8,
@@ -35,7 +70,11 @@ class ReaderSettings {
     this.paragraphSpacing = 8.0,
     this.indentSize = 2.0,
     this.showChapterTitle = true,
+    this.pageTurnModeIndex = 0,
   });
+
+  /// 获取当前翻页模式
+  PageTurnMode get pageTurnMode => PageTurnModeExtension.fromIndex(pageTurnModeIndex);
 
   /// 预设主题列表
   static const List<ReaderTheme> themes = [
@@ -84,6 +123,7 @@ class ReaderSettings {
     double? paragraphSpacing,
     double? indentSize,
     bool? showChapterTitle,
+    int? pageTurnModeIndex,
   }) {
     return ReaderSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -94,6 +134,7 @@ class ReaderSettings {
       paragraphSpacing: paragraphSpacing ?? this.paragraphSpacing,
       indentSize: indentSize ?? this.indentSize,
       showChapterTitle: showChapterTitle ?? this.showChapterTitle,
+      pageTurnModeIndex: pageTurnModeIndex ?? this.pageTurnModeIndex,
     );
   }
 
@@ -108,6 +149,7 @@ class ReaderSettings {
       'paragraphSpacing': paragraphSpacing,
       'indentSize': indentSize,
       'showChapterTitle': showChapterTitle,
+      'pageTurnModeIndex': pageTurnModeIndex,
     };
   }
 
@@ -122,6 +164,7 @@ class ReaderSettings {
       paragraphSpacing: (json['paragraphSpacing'] as num?)?.toDouble() ?? 8.0,
       indentSize: (json['indentSize'] as num?)?.toDouble() ?? 2.0,
       showChapterTitle: json['showChapterTitle'] as bool? ?? true,
+      pageTurnModeIndex: json['pageTurnModeIndex'] as int? ?? 0,
     );
   }
 }

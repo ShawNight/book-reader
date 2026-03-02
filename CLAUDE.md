@@ -53,7 +53,7 @@ lib/
 ├── models/                      # Data models with JSON serialization
 │   ├── book_source.dart         # BookSource, RuleSearch, RuleToc, RuleContent, Chapter
 │   ├── book.dart                # Book model for bookshelf (with progress + scroll position)
-│   ├── reader_settings.dart     # Reader settings (font, theme, spacing, etc.)
+│   ├── reader_settings.dart     # Reader settings (font, theme, spacing, page turn mode, etc.)
 │   ├── source_test_result.dart  # Source test status and result models
 │   └── *.g.dart                 # Generated JSON serialization code
 ├── services/                    # Business logic layer
@@ -64,6 +64,8 @@ lib/
 │   ├── reader_settings_service.dart  # Reader settings persistence
 │   ├── chapter_cache_service.dart    # Chapter content persistent cache
 │   └── source_test_service.dart      # Source validity testing service
+├── widgets/                     # Reusable UI components
+│   └── simulation_page_turn.dart     # Simulation page turn animation widget
 └── screens/                     # UI layer
     ├── home_screen.dart         # Tab navigation (Bookshelf, Sources, Settings)
     ├── search_screen.dart       # Multi-source search with streaming results
@@ -109,7 +111,11 @@ Book sources must be compatible with 阅读3.0 JSON format. Key fields:
   - Horizontal/Vertical padding
   - Show/hide chapter title
 - **Themes**: 6 preset themes (米黄色, 护眼绿, 夜间模式, 纯白, 羊皮纸, 蓝色护眼)
-- **Page Turn Modes**: Slide, Cover, Simulation, Scroll
+- **Page Turn Modes**: 4 modes with realistic animations
+  - Slide: Default horizontal swipe
+  - Cover: Page overlay transition
+  - Simulation: Realistic page flip with shadow and edge effects
+  - Scroll: Vertical continuous scrolling
 - **Tap to Turn Page**: Click left/right screen edges to navigate
 - **Chapter Progress**: Real-time progress bar and percentage within chapter
 - **Progress Saving**: Auto-save chapter index and scroll position (2s delay)
@@ -186,13 +192,18 @@ When book source rules fail, `_tryCommonContentSelectors()` attempts common nove
 - paragraphSpacing: double (0-24, default 8)
 - indentSize: double (0-4, default 2)
 - showChapterTitle: bool (default true)
+- pageTurnModeIndex: int (0-3, default 0) // 0=slide, 1=cover, 2=simulation, 3=scroll
 ```
 
 ### Page Turn Implementation
 
 - **Slide Mode**: Default PageView horizontal swipe
 - **Cover Mode**: PageView with cover transition
-- **Simulation Mode**: Standard page flip (placeholder, uses default PageView)
+- **Simulation Mode**: Custom `SimulationPageTurn` widget with:
+  - Realistic page flip animation with shadow effects
+  - Gesture-based dragging for manual page turn
+  - Page edge highlighting and fold effects
+  - Smooth transition using Curves.easeInOutCubic
 - **Scroll Mode**: ListView vertical scrolling
 - **Tap Navigation**: Left 30% = previous, Right 30% = next, Center = toggle controls
 
@@ -231,13 +242,12 @@ Key dependencies in `pubspec.yaml`:
 
 ## Known Issues / TODO
 
-1. **Simulation Page Turn**: Currently uses default PageView, needs custom animation
-2. **Image Support**: Images in chapter content not yet supported
-3. **Some book sources may fail**: Due to rule incompatibility or website changes
-4. **Bookmark Feature**: Model and UI placeholder exist, full implementation pending
-5. **Bookshelf Sorting**: Currently only by add time (newest first)
-6. **Batch Book Management**: Multi-select delete not implemented
-7. **Reading Statistics**: Total time, word count not tracked
+1. **Image Support**: Images in chapter content not yet supported
+2. **Some book sources may fail**: Due to rule incompatibility or website changes
+3. **Bookmark Feature**: Model and UI placeholder exist, full implementation pending
+4. **Bookshelf Sorting**: Currently only by add time (newest first)
+5. **Batch Book Management**: Multi-select delete not implemented
+6. **Reading Statistics**: Total time, word count not tracked
 
 ## Notes
 

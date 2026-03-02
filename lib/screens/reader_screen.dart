@@ -8,6 +8,7 @@ import '../services/search_service.dart';
 import '../services/bookshelf_service.dart';
 import '../services/reader_settings_service.dart';
 import '../services/chapter_cache_service.dart';
+import '../widgets/simulation_page_turn.dart';
 
 /// 阅读页面
 class ReaderScreen extends StatefulWidget {
@@ -38,6 +39,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final ReaderSettingsService _settingsService = ReaderSettingsService();
   final ChapterCacheService _cacheService = ChapterCacheService();
   final PageController _pageController = PageController();
+  final SimulationPageTurnController _simulationController = SimulationPageTurnController();
 
   late int _currentIndex;
   final Map<int, String> _contentCache = {};
@@ -241,10 +243,188 @@ class _ReaderScreenState extends State<ReaderScreen> {
   void _goToChapter(int index) {
     if (index < 0 || index >= widget.chapters.length) return;
 
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
+    // 根据翻页模式选择不同的跳转方式
+    switch (_settings.pageTurnMode) {
+      case PageTurnMode.simulation:
+        _simulationController.animateToPage(index);
+        break;
+      case PageTurnMode.scroll:
+        // 滚动模式使用 ListView，不支持直接跳转
+        break;
+      default:
+        _pageController.animateToPage(
+          index,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+    }
+  }
+
+  /// 构建内容视图 - 根据翻页模式选择不同的实现
+  Widget _buildContentView() {
+    switch (_settings.pageTurnMode) {
+      case PageTurnMode.simulation:
+        return _buildSimulationView();
+      case PageTurnMode.cover:
+        return _buildCoverView();
+      case PageTurnMode.scroll:
+        return _buildScrollView();
+      case PageTurnMode.slide:
+      default:
+        return _buildSlideView();
+    }
+  }
+
+  /// 滑动翻页视图（默认 PageView）
+  Widget _buildSlideView() {
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: widget.chapters.length,
+      itemBuilder: (context, index) {
+        return _buildChapterPage(index);
+      },
+    );
+  }
+
+  /// 覆盖翻页视图
+  Widget _buildCoverView() {
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: widget.chapters.length,
+      pageSnapping: true,
+      physics: const PageScrollPhysics(),
+      itemBuilder: (context, index) {
+        return _buildChapterPage(index);
+      },
+    );
+  }
+
+  /// 滚动翻页视图
+  Widget _buildScrollView() {
+    return ListView.builder(
+      itemCount: widget.chapters.length,
+      itemBuilder: (context, index) {
+        // 滚动模式下，章节直接垂直排列
+        final content = _contentCache[index];
+        if (content == null) {
+          // 触发加载
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _loadChapter(index);
+          });
+        }
+        return _buildScrollableChapterPage(index);
+      },
+    );
+  }
+
+  /// 仿真翻页视图
+  Widget _buildSimulationView() {
+    return SimulationPageTurn(
+      controller: _simulationController,
+      itemCount: widget.chapters.length,
+      backgroundColor: _settings.theme.backgroundColor,
+      onPageChanged: (index) {
+        if (index != _currentIndex) {
+          setState(() {
+            _currentIndex = index;
+            _chapterProgress = 0.0;
+          });
+
+          // 预加载下一章节
+          if (index + 1 < widget.chapters.length &&
+              !_contentCache.containsKey(index + 1)) {
+            _loadChapter(index + 1);
+          }
+
+          // 更新阅读进度
+          if (widget.bookUrl != null) {
+            _bookshelfService.updateReadProgress(
+              widget.bookUrl!,
+              chapterIndex: index,
+              chapterName: widget.chapters[index].name,
+            );
+          }
+        }
+      },
+      itemBuilder: (context, index) {
+        return _buildChapterPage(index);
+      },
+    );
+  }
+
+  /// 构建可滚动章节页面（用于滚动翻页模式）
+  Widget _buildScrollableChapterPage(int index) {
+    final isLoading = _loadingStates[index] == true;
+    final content = _contentCache[index];
+    final theme = _settings.theme;
+
+    if (isLoading && content == null) {
+      return Container(
+        height: MediaQuery.of(context).size.height,
+        color: theme.backgroundColor,
+        child: Center(
+          child: CircularProgressIndicator(color: theme.textColor),
+        ),
+      );
+    }
+
+    if (content == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadChapter(index);
+      });
+      return Container(
+        height: MediaQuery.of(context).size.height,
+        color: theme.backgroundColor,
+        child: Center(
+          child: CircularProgressIndicator(color: theme.textColor),
+        ),
+      );
+    }
+
+    final chapterName = widget.chapters[index].name;
+    final filteredContent = _filterChapterName(content, chapterName);
+
+    return Container(
+      color: theme.backgroundColor,
+      padding: EdgeInsets.symmetric(
+        vertical: _settings.verticalPadding,
+        horizontal: _settings.horizontalPadding,
+      ),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_settings.showChapterTitle) ...[
+              Center(
+                child: Text(
+                  chapterName,
+                  style: TextStyle(
+                    fontSize: _settings.fontSize + 4,
+                    fontWeight: FontWeight.bold,
+                    color: theme.textColor,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              SizedBox(height: _settings.lineHeight * 8),
+              Divider(color: theme.textColor.withOpacity(0.2), height: 1),
+              SizedBox(height: _settings.lineHeight * 12),
+            ],
+            _buildContentText(filteredContent, theme),
+            const SizedBox(height: 48),
+            // 章节分隔
+            Container(
+              height: 40,
+              alignment: Alignment.center,
+              child: Divider(
+                color: theme.textColor.withOpacity(0.3),
+                thickness: 2,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -255,14 +435,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
         onTap: _toggleControls,
         child: Stack(
           children: [
-            // 内容区域
-            PageView.builder(
-              controller: _pageController,
-              itemCount: widget.chapters.length,
-              itemBuilder: (context, index) {
-                return _buildChapterPage(index);
-              },
-            ),
+            // 内容区域 - 根据翻页模式选择不同的实现
+            _buildContentView(),
 
             // 顶部控制栏
             if (_showControls) ...[
@@ -771,6 +945,59 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         },
                       ),
                     ],
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // 翻页模式选择
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('翻页模式'),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: PageTurnMode.values.map((mode) {
+                      final isSelected = mode == _settings.pageTurnMode;
+                      return GestureDetector(
+                        onTap: () {
+                          setModalState(() {
+                            _settings = _settings.copyWith(
+                              pageTurnModeIndex: mode.index,
+                            );
+                          });
+                          setState(() {});
+                          _settingsService.saveSettings(_settings);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Theme.of(context).primaryColor
+                                : Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Theme.of(context).primaryColor
+                                  : Colors.grey.shade300,
+                            ),
+                          ),
+                          child: Text(
+                            mode.displayName,
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : Colors.black87,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   ),
 
                   const SizedBox(height: 24),
