@@ -83,6 +83,38 @@ class BookshelfService {
     await saveBooks(books);
   }
 
+  /// 批量移除书籍
+  Future<void> removeBooks(List<String> bookUrls) async {
+    final books = await loadBooks();
+    final urlSet = bookUrls.toSet();
+    books.removeWhere((b) => urlSet.contains(b.bookUrl));
+    await saveBooks(books);
+  }
+
+  /// 批量标记已读
+  Future<void> markBooksAsRead(List<String> bookUrls) async {
+    final books = await loadBooks();
+    final urlSet = bookUrls.toSet();
+    for (int i = 0; i < books.length; i++) {
+      if (urlSet.contains(books[i].bookUrl)) {
+        books[i] = books[i].copyWith(isRead: true);
+      }
+    }
+    await saveBooks(books);
+  }
+
+  /// 批量标记未读
+  Future<void> markBooksAsUnread(List<String> bookUrls) async {
+    final books = await loadBooks();
+    final urlSet = bookUrls.toSet();
+    for (int i = 0; i < books.length; i++) {
+      if (urlSet.contains(books[i].bookUrl)) {
+        books[i] = books[i].copyWith(isRead: false);
+      }
+    }
+    await saveBooks(books);
+  }
+
   /// 更新阅读进度
   Future<void> updateReadProgress(
     String bookUrl, {

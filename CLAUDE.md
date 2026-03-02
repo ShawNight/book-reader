@@ -133,6 +133,12 @@ Book sources must be compatible with 阅读3.0 JSON format. Key fields:
   - Sort by: Added time (default), Name, Author, Last read time, Read progress
   - Toggle ascending/descending by clicking same sort option
   - Settings saved to reader_settings.json
+- **Batch Management**: Multi-select mode for bulk operations
+  - Long press to enter selection mode
+  - Select all / Deselect all
+  - Batch delete with confirmation dialog
+  - Batch mark as read / unread
+  - Bottom action bar with operation count display
 
 ### Book Source Features (HomeScreen - Sources Tab)
 - **Import Sources**: Import JSON files (append mode, won't overwrite)
@@ -251,8 +257,7 @@ Key dependencies in `pubspec.yaml`:
 1. **Image Support**: Images in chapter content not yet supported
 2. **Some book sources may fail**: Due to rule incompatibility or website changes
 3. **Bookmark Feature**: Model and UI placeholder exist, full implementation pending
-4. **Batch Book Management**: Multi-select delete not implemented
-5. **Reading Statistics**: Total time, word count not tracked
+4. **Reading Statistics**: Total time, word count not tracked
 
 ## Notes
 

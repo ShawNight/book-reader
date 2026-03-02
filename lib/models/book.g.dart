@@ -22,6 +22,7 @@ Book _$BookFromJson(Map<String, dynamic> json) => Book(
       lastReadTime: json['lastReadTime'] == null
           ? null
           : DateTime.parse(json['lastReadTime'] as String),
+      isRead: json['isRead'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$BookToJson(Book instance) => <String, dynamic>{
@@ -38,4 +39,5 @@ Map<String, dynamic> _$BookToJson(Book instance) => <String, dynamic>{
       'lastReadChapterName': instance.lastReadChapterName,
       'scrollProgress': instance.scrollProgress,
       'lastReadTime': instance.lastReadTime?.toIso8601String(),
+      'isRead': instance.isRead,
     };

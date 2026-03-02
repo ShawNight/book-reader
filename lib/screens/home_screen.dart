@@ -77,6 +77,10 @@ class _BookshelfPageState extends State<_BookshelfPage> {
   BookshelfSortMode _sortMode = BookshelfSortMode.addedTime;
   bool _sortAscending = false;
 
+  // 多选模式状态
+  bool _isSelectionMode = false;
+  final Set<String> _selectedBookUrls = {};
+
   @override
   void initState() {
     super.initState();
@@ -126,64 +130,168 @@ class _BookshelfPageState extends State<_BookshelfPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('我的书架'),
-        actions: [
-          // 排序按钮
-          PopupMenuButton<BookshelfSortMode>(
-            icon: const Icon(Icons.sort),
-            tooltip: '排序方式',
-            initialValue: _sortMode,
-            onSelected: _changeSortMode,
-            itemBuilder: (context) {
-              return BookshelfSortMode.values.map((mode) {
-                final isSelected = _sortMode == mode;
-                return PopupMenuItem<BookshelfSortMode>(
-                  value: mode,
-                  child: Row(
-                    children: [
-                      Icon(
-                        isSelected
-                            ? (_sortAscending
-                                ? Icons.arrow_upward
-                                : Icons.arrow_downward)
+      appBar: _isSelectionMode ? _buildSelectionAppBar() : _buildNormalAppBar(),
+      body: _buildBody(),
+      bottomNavigationBar: _isSelectionMode ? _buildBottomActionBar() : null,
+    );
+  }
+
+  /// 普通模式 AppBar
+  PreferredSizeWidget _buildNormalAppBar() {
+    return AppBar(
+      title: const Text('我的书架'),
+      actions: [
+        // 排序按钮
+        PopupMenuButton<BookshelfSortMode>(
+          icon: const Icon(Icons.sort),
+          tooltip: '排序方式',
+          initialValue: _sortMode,
+          onSelected: _changeSortMode,
+          itemBuilder: (context) {
+            return BookshelfSortMode.values.map((mode) {
+              final isSelected = _sortMode == mode;
+              return PopupMenuItem<BookshelfSortMode>(
+                value: mode,
+                child: Row(
+                  children: [
+                    Icon(
+                      isSelected
+                          ? (_sortAscending
+                              ? Icons.arrow_upward
+                              : Icons.arrow_downward)
+                          : null,
+                      size: 18,
+                      color: Theme.of(context).primaryColor,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      mode.displayName,
+                      style: TextStyle(
+                        color: isSelected
+                            ? Theme.of(context).primaryColor
                             : null,
-                        size: 18,
-                        color: Theme.of(context).primaryColor,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.normal,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        mode.displayName,
-                        style: TextStyle(
-                          color: isSelected
-                              ? Theme.of(context).primaryColor
-                              : null,
-                          fontWeight:
-                              isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const SearchScreen(),
+                    ),
+                  ],
                 ),
               );
-              // 返回后刷新书架
-              _loadBooks();
-            },
+            }).toList();
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.search),
+          onPressed: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const SearchScreen(),
+              ),
+            );
+            // 返回后刷新书架
+            _loadBooks();
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.checklist),
+          tooltip: '多选',
+          onPressed: _books.isEmpty ? null : _enterSelectionMode,
+        ),
+      ],
+    );
+  }
+
+  /// 多选模式 AppBar
+  PreferredSizeWidget _buildSelectionAppBar() {
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        onPressed: _exitSelectionMode,
+      ),
+      title: Text('已选 ${_selectedBookUrls.length} 本'),
+      actions: [
+        TextButton(
+          onPressed: _selectedBookUrls.isEmpty
+              ? _selectAll
+              : _selectedBookUrls.length == _books.length
+                  ? _deselectAll
+                  : _selectAll,
+          child: Text(
+            _selectedBookUrls.length == _books.length ? '取消全选' : '全选',
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 底部操作栏
+  Widget _buildBottomActionBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
           ),
         ],
       ),
-      body: _buildBody(),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildActionButton(
+            icon: Icons.delete,
+            label: '删除',
+            onPressed: _selectedBookUrls.isEmpty ? null : _batchDelete,
+            color: Colors.red,
+          ),
+          _buildActionButton(
+            icon: Icons.check_circle,
+            label: '标记已读',
+            onPressed: _selectedBookUrls.isEmpty ? null : _batchMarkAsRead,
+            color: Colors.green,
+          ),
+          _buildActionButton(
+            icon: Icons.radio_button_unchecked,
+            label: '标记未读',
+            onPressed: _selectedBookUrls.isEmpty ? null : _batchMarkAsUnread,
+            color: Colors.orange,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 操作按钮
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+    Color? color,
+  }) {
+    final isEnabled = onPressed != null;
+    return TextButton(
+      onPressed: onPressed,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: isEnabled ? color : Colors.grey,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: isEnabled ? color : Colors.grey,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -211,18 +319,26 @@ class _BookshelfPageState extends State<_BookshelfPage> {
       itemCount: _books.length,
       itemBuilder: (context, index) {
         final book = _books[index];
-        return Dismissible(
-          key: Key(book.bookUrl),
-          direction: DismissDirection.endToStart,
-          onDismissed: (_) => _removeBook(book),
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 16),
-            color: Colors.red,
-            child: const Icon(Icons.delete, color: Colors.white),
-          ),
-          child: ListTile(
-            leading: book.coverUrl != null
+        return _buildBookItem(book);
+      },
+    );
+  }
+
+  /// 构建书籍列表项
+  Widget _buildBookItem(Book book) {
+    final isSelected = _selectedBookUrls.contains(book.bookUrl);
+
+    if (_isSelectionMode) {
+      // 多选模式
+      return ListTile(
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Checkbox(
+              value: isSelected,
+              onChanged: (value) => _toggleSelection(book.bookUrl),
+            ),
+            book.coverUrl != null
                 ? Image.network(
                     book.coverUrl!,
                     width: 50,
@@ -231,74 +347,163 @@ class _BookshelfPageState extends State<_BookshelfPage> {
                     errorBuilder: (_, __, ___) => const Icon(Icons.book),
                   )
                 : const Icon(Icons.book),
-            title: Text(book.name),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('作者：${book.author}'),
-                if (book.lastReadChapterName != null)
-                  Text(
-                    '读到：${book.lastReadChapterName}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Theme.of(context).primaryColor),
+          ],
+        ),
+        title: Row(
+          children: [
+            Expanded(child: Text(book.name)),
+            if (book.isRead)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  '已读',
+                  style: TextStyle(fontSize: 10, color: Colors.green),
+                ),
+              ),
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('作者：${book.author}'),
+            if (book.lastReadChapterName != null)
+              Text(
+                '读到：${book.lastReadChapterName}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Theme.of(context).primaryColor),
+              ),
+            if (book.latestChapter != null)
+              Text(
+                '最新：${book.latestChapter}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            Text(
+              '来源：${book.sourceName}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+        isThreeLine: true,
+        onTap: () => _toggleSelection(book.bookUrl),
+      );
+    } else {
+      // 普通模式
+      return Dismissible(
+        key: Key(book.bookUrl),
+        direction: DismissDirection.endToStart,
+        onDismissed: (_) => _removeBook(book),
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 16),
+          color: Colors.red,
+          child: const Icon(Icons.delete, color: Colors.white),
+        ),
+        child: ListTile(
+          leading: book.coverUrl != null
+              ? Image.network(
+                  book.coverUrl!,
+                  width: 50,
+                  height: 70,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.book),
+                )
+              : const Icon(Icons.book),
+          title: Row(
+            children: [
+              Expanded(child: Text(book.name)),
+              if (book.isRead)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                if (book.latestChapter != null)
-                  Text(
-                    '最新：${book.latestChapter}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                Text(
-                  '来源：${book.sourceName}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
+                  child: const Text(
+                    '已读',
+                    style: TextStyle(fontSize: 10, color: Colors.green),
                   ),
                 ),
-              ],
-            ),
-            isThreeLine: true,
-            onTap: () async {
-              // 从书源服务加载书源
-              final sourceService = BookSourceService();
-              final sources = await sourceService.loadBookSources();
-              final source = sources.firstWhere(
-                (s) => s.bookSourceUrl == book.sourceUrl,
-                orElse: () => throw Exception('书源不存在'),
-              );
-
-              if (!mounted) return;
-
-              // 检查是否有阅读记录
-              if (book.lastReadChapter != null) {
-                // 有阅读记录，直接进入阅读器
-                await _openReaderDirectly(book, source);
-              } else {
-                // 首次阅读，进入章节列表
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChapterListScreen(
-                      bookUrl: book.bookUrl,
-                      bookName: book.name,
-                      source: source,
-                      coverUrl: book.coverUrl,
-                      intro: book.intro,
-                      latestChapter: book.latestChapter,
-                      lastReadChapter: book.lastReadChapter,
-                      scrollProgress: book.scrollProgress,
-                    ),
-                  ),
-                );
-              }
-              // 返回后刷新书架
-              _loadBooks();
-            },
+            ],
           ),
-        );
-      },
-    );
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('作者：${book.author}'),
+              if (book.lastReadChapterName != null)
+                Text(
+                  '读到：${book.lastReadChapterName}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Theme.of(context).primaryColor),
+                ),
+              if (book.latestChapter != null)
+                Text(
+                  '最新：${book.latestChapter}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              Text(
+                '来源：${book.sourceName}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+          isThreeLine: true,
+          onTap: () async {
+            // 从书源服务加载书源
+            final sourceService = BookSourceService();
+            final sources = await sourceService.loadBookSources();
+            final source = sources.firstWhere(
+              (s) => s.bookSourceUrl == book.sourceUrl,
+              orElse: () => throw Exception('书源不存在'),
+            );
+
+            if (!mounted) return;
+
+            // 检查是否有阅读记录
+            if (book.lastReadChapter != null) {
+              // 有阅读记录，直接进入阅读器
+              await _openReaderDirectly(book, source);
+            } else {
+              // 首次阅读，进入章节列表
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChapterListScreen(
+                    bookUrl: book.bookUrl,
+                    bookName: book.name,
+                    source: source,
+                    coverUrl: book.coverUrl,
+                    intro: book.intro,
+                    latestChapter: book.latestChapter,
+                    lastReadChapter: book.lastReadChapter,
+                    scrollProgress: book.scrollProgress,
+                  ),
+                ),
+              );
+            }
+            // 返回后刷新书架
+            _loadBooks();
+          },
+          onLongPress: () {
+            // 长按进入多选模式并选中该项
+            _enterSelectionMode(bookUrl: book.bookUrl);
+          },
+        ),
+      );
+    }
   }
 
   Future<void> _removeBook(Book book) async {
@@ -307,6 +512,112 @@ class _BookshelfPageState extends State<_BookshelfPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('《${book.name}》已从书架移除')),
       );
+      _loadBooks();
+    }
+  }
+
+  // ============== 多选模式相关方法 ==============
+
+  /// 进入多选模式
+  void _enterSelectionMode({String? bookUrl}) {
+    setState(() {
+      _isSelectionMode = true;
+      if (bookUrl != null) {
+        _selectedBookUrls.add(bookUrl);
+      }
+    });
+  }
+
+  /// 退出多选模式
+  void _exitSelectionMode() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedBookUrls.clear();
+    });
+  }
+
+  /// 切换选中状态
+  void _toggleSelection(String bookUrl) {
+    setState(() {
+      if (_selectedBookUrls.contains(bookUrl)) {
+        _selectedBookUrls.remove(bookUrl);
+      } else {
+        _selectedBookUrls.add(bookUrl);
+      }
+    });
+  }
+
+  /// 全选
+  void _selectAll() {
+    setState(() {
+      _selectedBookUrls.clear();
+      _selectedBookUrls.addAll(_books.map((b) => b.bookUrl));
+    });
+  }
+
+  /// 取消全选
+  void _deselectAll() {
+    setState(() {
+      _selectedBookUrls.clear();
+    });
+  }
+
+  /// 批量删除
+  Future<void> _batchDelete() async {
+    final count = _selectedBookUrls.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除选中的 $count 本书吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _bookshelfService.removeBooks(_selectedBookUrls.toList());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已删除 $count 本书')),
+        );
+        _exitSelectionMode();
+        _loadBooks();
+      }
+    }
+  }
+
+  /// 批量标记已读
+  Future<void> _batchMarkAsRead() async {
+    final count = _selectedBookUrls.length;
+    await _bookshelfService.markBooksAsRead(_selectedBookUrls.toList());
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已将 $count 本书标记为已读')),
+      );
+      _exitSelectionMode();
+      _loadBooks();
+    }
+  }
+
+  /// 批量标记未读
+  Future<void> _batchMarkAsUnread() async {
+    final count = _selectedBookUrls.length;
+    await _bookshelfService.markBooksAsUnread(_selectedBookUrls.toList());
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已将 $count 本书标记为未读')),
+      );
+      _exitSelectionMode();
       _loadBooks();
     }
   }

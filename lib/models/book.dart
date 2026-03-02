@@ -18,6 +18,7 @@ class Book {
   final String? lastReadChapterName;
   final double? scrollProgress; // 章节内滚动进度 (0.0 - 1.0)
   final DateTime? lastReadTime; // 最近阅读时间
+  final bool isRead; // 是否已读标记
 
   Book({
     required this.name,
@@ -33,6 +34,7 @@ class Book {
     this.lastReadChapterName,
     this.scrollProgress,
     this.lastReadTime,
+    this.isRead = false, // 默认未读
   });
 
   factory Book.fromJson(Map<String, dynamic> json) => _$BookFromJson(json);
@@ -45,6 +47,7 @@ class Book {
     String? latestChapter,
     double? scrollProgress,
     DateTime? lastReadTime,
+    bool? isRead,
   }) {
     return Book(
       name: name,
@@ -60,6 +63,7 @@ class Book {
       lastReadChapterName: lastReadChapterName ?? this.lastReadChapterName,
       scrollProgress: scrollProgress ?? this.scrollProgress,
       lastReadTime: lastReadTime ?? this.lastReadTime,
+      isRead: isRead ?? this.isRead,
     );
   }
 }
