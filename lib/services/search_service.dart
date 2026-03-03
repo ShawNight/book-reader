@@ -998,7 +998,8 @@ class SearchService {
       try {
         final elements = _getElements(document.documentElement!, contentRule);
         print('📄 找到 ${elements.length} 个内容元素');
-        content = elements.map((e) => e.text.trim()).join('\n\n');
+        // 提取HTML内容以保留图片标签
+        content = _extractContentWithImages(elements, baseUrl);
       } catch (e) {
         print('⚠️ 内容解析错误: $e');
         // 规则解析失败，尝试通用选择器
@@ -1043,6 +1044,55 @@ class SearchService {
       content: finalContent,
       nextUrl: _extractUrlNew(document.documentElement, rule.nextContentUrl, baseUrl),
     );
+  }
+
+  /// 从元素中提取内容（保留图片标签）
+  String _extractContentWithImages(List<dom.Element> elements, String baseUrl) {
+    final buffer = StringBuffer();
+
+    for (final element in elements) {
+      // 递归处理元素节点
+      _processNode(element, buffer, baseUrl);
+    }
+
+    return buffer.toString().trim();
+  }
+
+  /// 递归处理节点，保留图片标签
+  void _processNode(dom.Node node, StringBuffer buffer, String baseUrl) {
+    if (node is dom.Text) {
+      // 文本节点直接添加
+      final text = node.text.trim();
+      if (text.isNotEmpty) {
+        buffer.write(text);
+      }
+    } else if (node is dom.Element) {
+      if (node.localName == 'img') {
+        // 处理图片标签
+        final src = node.attributes['src'] ?? node.attributes['data-src'];
+        if (src != null && src.isNotEmpty) {
+          final fullUrl = _resolveUrl(src, baseUrl);
+          buffer.write('\n<img src="$fullUrl"/>\n');
+        }
+      } else if (node.localName == 'br') {
+        buffer.write('\n');
+      } else if (node.localName == 'p' || node.localName == 'div') {
+        // 段落或div，递归处理子节点
+        final childBuffer = StringBuffer();
+        for (final child in node.nodes) {
+          _processNode(child, childBuffer, baseUrl);
+        }
+        final childText = childBuffer.toString().trim();
+        if (childText.isNotEmpty) {
+          buffer.write('\n$childText\n');
+        }
+      } else {
+        // 其他标签，递归处理子节点
+        for (final child in node.nodes) {
+          _processNode(child, buffer, baseUrl);
+        }
+      }
+    }
   }
 
   /// 尝试常见的内容选择器

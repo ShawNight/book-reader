@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/book_source.dart';
 import '../models/bookmark.dart';
@@ -11,6 +12,7 @@ import '../services/reader_settings_service.dart';
 import '../services/chapter_cache_service.dart';
 import '../services/bookmark_service.dart';
 import '../widgets/simulation_page_turn.dart';
+import '../widgets/content_with_images.dart';
 
 /// 阅读页面
 class ReaderScreen extends StatefulWidget {
@@ -707,40 +709,92 @@ class _ReaderScreenState extends State<ReaderScreen> {
     return content;
   }
 
-  /// 构建正文内容（按段落渲染）
+  /// 构建正文内容（支持文本和图片）
   Widget _buildContentText(String content, ReaderTheme theme) {
-    // 按段落分割（支持多种换行符）
-    final paragraphs = content
-        .split(RegExp(r'\n+'))
-        .where((p) => p.trim().isNotEmpty)
-        .toList();
+    return ContentWithImages(
+      content: content,
+      textStyle: TextStyle(
+        fontSize: _settings.fontSize,
+        height: _settings.lineHeight,
+        color: theme.textColor,
+      ),
+      paragraphSpacing: _settings.paragraphSpacing,
+      indentSize: _settings.indentSize,
+      referer: widget.source.bookSourceUrl, // 添加防盗链 Referer
+      onImageTap: (imageUrl) => _showImagePreview(imageUrl),
+    );
+  }
 
-    if (paragraphs.isEmpty) {
-      return Text(
-        content,
-        style: TextStyle(
-          fontSize: _settings.fontSize,
-          height: _settings.lineHeight,
-          color: theme.textColor,
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: paragraphs.map((paragraph) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: _settings.paragraphSpacing),
-          child: Text(
-            _addIndent(paragraph.trim()),
-            style: TextStyle(
-              fontSize: _settings.fontSize,
-              height: _settings.lineHeight,
-              color: theme.textColor,
+  /// 显示图片预览
+  void _showImagePreview(String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 图片查看器
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              onVerticalDragEnd: (details) {
+                // 下滑关闭
+                if (details.primaryVelocity != null && details.primaryVelocity! > 500) {
+                  Navigator.pop(context);
+                }
+              },
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Center(
+                  child: CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.contain,
+                    httpHeaders: {
+                      'Referer': widget.source.bookSourceUrl,
+                    },
+                    placeholder: (context, url) => const Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                    errorWidget: (context, url, error) => Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.broken_image,
+                            color: Colors.white,
+                            size: 48,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '图片加载失败',
+                            style: TextStyle(
+                              color: Colors.grey[300],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
-        );
-      }).toList(),
+            // 关闭按钮
+            Positioned(
+              top: 40,
+              right: 16,
+              child: SafeArea(
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 32),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

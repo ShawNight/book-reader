@@ -263,7 +263,6 @@ Key dependencies in `pubspec.yaml`:
 
 ## Known Issues / TODO
 
-1. **Image Support**: Images in chapter content not yet supported
 2. **Some book sources may fail**: Due to rule incompatibility or website changes
 3. **Reading Statistics**: Total time, word count not tracked
 
