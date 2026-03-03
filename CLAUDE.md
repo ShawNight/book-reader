@@ -130,6 +130,13 @@ Book sources must be compatible with 阅读3.0 JSON format. Key fields:
   - Bookmark list dialog with quick navigation
   - Visual indicator (solid/hollow icon) for bookmark status
   - Bookmarks persist across sessions
+- **Chapter Drawer**: Left-side drawer for chapter navigation
+  - Directory-style layout ("第N章 章节名称")
+  - Download status indicators for each chapter
+  - Batch download functionality with progress tracking
+  - Select all / Deselect all
+  - Background download, non-blocking UI
+  - Cancel download at any time
 
 ### Bookshelf Features (HomeScreen)
 - **Book Management**: Add, remove, update reading progress
@@ -162,6 +169,8 @@ Book sources must be compatible with 阅读3.0 JSON format. Key fields:
   - One-click purify invalid sources with confirmation
 
 ### Chapter List Features (ChapterListScreen)
+- **Directory Style Layout**: Chapter number and name displayed as "第N章 章节名称"
+- **Top Actions Bar**: Prominent "批量下载" button with cached count badge
 - **Search Chapters**: Filter chapters by name
 - **Sort Order**: Ascending / Descending toggle
 - **Group View**: Group by 50 chapters

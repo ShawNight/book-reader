@@ -11,6 +11,7 @@ import '../services/bookshelf_service.dart';
 import '../services/reader_settings_service.dart';
 import '../services/chapter_cache_service.dart';
 import '../services/bookmark_service.dart';
+import '../services/batch_download_service.dart';
 import '../widgets/simulation_page_turn.dart';
 import '../widgets/content_with_images.dart';
 
@@ -43,6 +44,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final ReaderSettingsService _settingsService = ReaderSettingsService();
   final ChapterCacheService _cacheService = ChapterCacheService();
   final BookmarkService _bookmarkService = BookmarkService();
+  final BatchDownloadService _downloadService = BatchDownloadService();
   final PageController _pageController = PageController();
   final SimulationPageTurnController _simulationController = SimulationPageTurnController();
 
@@ -67,18 +69,64 @@ class _ReaderScreenState extends State<ReaderScreen> {
   // 是否已恢复初始滚动位置
   bool _hasRestoredInitialProgress = false;
 
+  // 下载相关
+  final Map<int, DownloadStatus> _chapterDownloadStatus = {};
+  final Set<int> _selectedChapters = {};
+  bool _isSelectionMode = false;
+  bool _isDownloading = false;
+  BatchDownloadProgress? _downloadProgress;
+  int _downloadedCount = 0;
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController.addListener(_onPageChanged);
     _initServices();
+    _listenToDownloadProgress();
 
     // 预加载当前章节
     _loadChapter(_currentIndex);
     // 预加载下一章节
     if (_currentIndex + 1 < widget.chapters.length) {
       _loadChapter(_currentIndex + 1);
+    }
+  }
+
+  /// 监听下载进度
+  void _listenToDownloadProgress() {
+    _downloadService.progressStream.listen((progress) {
+      if (mounted) {
+        setState(() {
+          _downloadProgress = progress;
+          _isDownloading = progress.isDownloading;
+        });
+
+        // 下载完成后刷新状态
+        if (!progress.isDownloading && progress.total > 0) {
+          _refreshDownloadStatus();
+        }
+      }
+    });
+  }
+
+  /// 刷新下载状态
+  Future<void> _refreshDownloadStatus() async {
+    int count = 0;
+    for (int i = 0; i < widget.chapters.length; i++) {
+      final chapter = widget.chapters[i];
+      final isCached = await _cacheService.hasCache(chapter.url);
+      if (isCached) {
+        _chapterDownloadStatus[i] = DownloadStatus.downloaded;
+        count++;
+      } else {
+        _chapterDownloadStatus[i] = DownloadStatus.notDownloaded;
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _downloadedCount = count;
+      });
     }
   }
 
@@ -814,63 +862,453 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   void _showChapterList() {
-    showModalBottomSheet(
+    // 刷新下载状态
+    _refreshDownloadStatus();
+
+    showDialog(
       context: context,
+      barrierColor: Colors.transparent,
       builder: (context) {
-        return Container(
-          height: 400,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    '章节列表',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const Divider(),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: widget.chapters.length,
-                  itemBuilder: (context, index) {
-                    final isSelected = index == _currentIndex;
-                    return ListTile(
-                      title: Text(
-                        widget.chapters[index].name,
-                        style: TextStyle(
-                          color: isSelected ? Theme.of(context).primaryColor : null,
-                          fontWeight: isSelected ? FontWeight.bold : null,
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Material(
+                color: Colors.transparent,
+                child: Stack(
+                  children: [
+                    // 左侧抽屉
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: GestureDetector(
+                        onTap: () {}, // 阻止点击穿透
+                        child: Container(
+                          width: 320,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).scaffoldBackgroundColor,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 10,
+                                offset: const Offset(2, 0),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              // 标题栏
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).primaryColor,
+                                ),
+                                child: SafeArea(
+                                  bottom: false,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          widget.bookName,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.close, color: Colors.white),
+                                        onPressed: () => Navigator.pop(context),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              // 顶部操作区
+                              _buildDrawerTopActions(setDialogState),
+                              // 章节列表
+                              Expanded(
+                                child: _isSelectionMode
+                                    ? _buildSelectionChapterList(setDialogState)
+                                    : _buildNormalChapterList(),
+                              ),
+                              // 底部操作栏（多选模式）
+                              if (_isSelectionMode)
+                                _buildDrawerBottomActions(setDialogState),
+                            ],
+                          ),
                         ),
                       ),
-                      trailing: isSelected
-                          ? Icon(
-                              Icons.check,
-                              color: Theme.of(context).primaryColor,
-                            )
-                          : null,
-                      onTap: () {
-                        Navigator.pop(context);
-                        _goToChapter(index);
-                      },
-                    );
-                  },
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
+  }
+
+  /// 抽屉顶部操作区
+  Widget _buildDrawerTopActions(StateSetter setDialogState) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade300),
+        ),
+      ),
+      child: Row(
+        children: [
+          if (_isSelectionMode) ...[
+            // 多选模式标题
+            Expanded(
+              child: Text(
+                _isDownloading
+                    ? '下载中 ${_downloadProgress?.progressText ?? ""}'
+                    : '已选 ${_selectedChapters.length} 章',
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ),
+            TextButton(
+              onPressed: _isDownloading
+                  ? null
+                  : () {
+                      setDialogState(() {
+                        if (_selectedChapters.length == widget.chapters.length) {
+                          _selectedChapters.clear();
+                        } else {
+                          _selectedChapters.clear();
+                          _selectedChapters.addAll(
+                            List.generate(widget.chapters.length, (i) => i),
+                          );
+                        }
+                      });
+                    },
+              child: Text(
+                _selectedChapters.length == widget.chapters.length ? '取消全选' : '全选',
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                setDialogState(() {
+                  _isSelectionMode = false;
+                  _selectedChapters.clear();
+                });
+              },
+              child: const Text('取消'),
+            ),
+          ] else ...[
+            // 普通模式
+            Expanded(
+              child: ElevatedButton.icon(
+                icon: _isDownloading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.download, size: 18),
+                label: Text(_isDownloading ? '下载中...' : '批量下载'),
+                onPressed: _isDownloading
+                    ? null
+                    : () {
+                        setDialogState(() {
+                          _isSelectionMode = true;
+                          _selectedChapters.clear();
+                        });
+                      },
+              ),
+            ),
+            if (_downloadedCount > 0) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.offline_pin, size: 14, color: Colors.green[700]),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$_downloadedCount',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.green[700],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 普通模式章节列表
+  Widget _buildNormalChapterList() {
+    return ListView.builder(
+      itemCount: widget.chapters.length,
+      itemBuilder: (context, index) {
+        final isSelected = index == _currentIndex;
+        final downloadStatus = _chapterDownloadStatus[index] ??
+            DownloadStatus.notDownloaded;
+
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          title: Row(
+            children: [
+              Text(
+                '第${index + 1}章',
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: isSelected ? Theme.of(context).primaryColor : Colors.grey[700],
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.chapters[index].name,
+                  style: TextStyle(
+                    color: isSelected ? Theme.of(context).primaryColor : null,
+                    fontWeight: isSelected ? FontWeight.bold : null,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              _buildDownloadStatusIcon(downloadStatus),
+              if (isSelected) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.play_circle_fill,
+                  size: 18,
+                  color: Theme.of(context).primaryColor,
+                ),
+              ],
+            ],
+          ),
+          onTap: () {
+            Navigator.pop(context);
+            _goToChapter(index);
+          },
+        );
+      },
+    );
+  }
+
+  /// 多选模式章节列表
+  Widget _buildSelectionChapterList(StateSetter setDialogState) {
+    return ListView.builder(
+      itemCount: widget.chapters.length,
+      itemBuilder: (context, index) {
+        final isSelected = _selectedChapters.contains(index);
+        final downloadStatus = _chapterDownloadStatus[index] ??
+            DownloadStatus.notDownloaded;
+
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          leading: Checkbox(
+            value: isSelected,
+            onChanged: _isDownloading
+                ? null
+                : (value) {
+                    setDialogState(() {
+                      if (value == true) {
+                        _selectedChapters.add(index);
+                      } else {
+                        _selectedChapters.remove(index);
+                      }
+                    });
+                  },
+          ),
+          title: Row(
+            children: [
+              Text(
+                '第${index + 1}章',
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.chapters[index].name,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              _buildDownloadStatusIcon(downloadStatus),
+            ],
+          ),
+          onTap: _isDownloading
+              ? null
+              : () {
+                  setDialogState(() {
+                    if (_selectedChapters.contains(index)) {
+                      _selectedChapters.remove(index);
+                    } else {
+                      _selectedChapters.add(index);
+                    }
+                  });
+                },
+        );
+      },
+    );
+  }
+
+  /// 抽屉底部操作栏
+  Widget _buildDrawerBottomActions(StateSetter setDialogState) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        border: Border(
+          top: BorderSide(color: Colors.grey.shade300),
+        ),
+      ),
+      child: _isDownloading
+          ? _buildDownloadProgressBar()
+          : Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.download, size: 18),
+                    label: Text('下载选中 (${_selectedChapters.length})'),
+                    onPressed: _selectedChapters.isEmpty
+                        ? null
+                        : () => _startDownload(setDialogState),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  /// 下载进度条
+  Widget _buildDownloadProgressBar() {
+    final progress = _downloadProgress;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: LinearProgressIndicator(
+                value: progress?.progress ?? 0,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              progress?.progressText ?? '0 / 0',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () {
+            _downloadService.cancelDownload();
+            setState(() {
+              _isDownloading = false;
+            });
+          },
+          child: const Text('取消下载'),
+        ),
+      ],
+    );
+  }
+
+  /// 开始下载
+  Future<void> _startDownload(StateSetter setDialogState) async {
+    if (_selectedChapters.isEmpty) return;
+
+    final selectedChapters =
+        _selectedChapters.map((i) => widget.chapters[i]).toList();
+
+    // 开始后台下载
+    setDialogState(() {
+      _isDownloading = true;
+    });
+
+    try {
+      await _downloadService.startBatchDownload(
+        selectedChapters,
+        widget.source,
+        widget.bookUrl ?? '',
+        concurrent: 3,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '下载完成：${_downloadProgress?.completed ?? 0} 章'
+              '${(_downloadProgress?.failed ?? 0) > 0 ? '，失败 ${_downloadProgress?.failed} 章' : ''}',
+            ),
+          ),
+        );
+        setDialogState(() {
+          _isSelectionMode = false;
+          _selectedChapters.clear();
+          _isDownloading = false;
+        });
+        _refreshDownloadStatus();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('下载失败：$e')),
+        );
+        setDialogState(() {
+          _isDownloading = false;
+        });
+      }
+    }
+  }
+
+  /// 构建下载状态图标
+  Widget _buildDownloadStatusIcon(DownloadStatus status) {
+    switch (status) {
+      case DownloadStatus.downloaded:
+        return const Icon(
+          Icons.offline_pin,
+          size: 16,
+          color: Colors.green,
+        );
+      case DownloadStatus.downloading:
+        return const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      case DownloadStatus.failed:
+        return const Icon(
+          Icons.error_outline,
+          size: 16,
+          color: Colors.red,
+        );
+      case DownloadStatus.notDownloaded:
+        return Icon(
+          Icons.cloud_off_outlined,
+          size: 16,
+          color: Colors.grey[400],
+        );
+    }
   }
 
   /// 显示阅读设置面板

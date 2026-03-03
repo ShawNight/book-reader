@@ -57,6 +57,7 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
   final Set<int> _selectedChapters = {};
   BatchDownloadProgress? _downloadProgress;
   bool _isDownloading = false;
+  int _downloadedCount = 0; // 已缓存章节数量
 
   @override
   void initState() {
@@ -86,16 +87,21 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
 
   /// 刷新下载状态
   Future<void> _refreshDownloadStatus() async {
-    final Map<int, DownloadStatus> statusMap = {};
-
+    int count = 0;
     for (int i = 0; i < _chapters.length; i++) {
       final chapter = _chapters[i];
       final isCached = await _cacheService.hasCache(chapter.url);
       if (isCached) {
         _chapterDownloadStatus[i] = DownloadStatus.downloaded;
+        count++;
       } else {
         _chapterDownloadStatus[i] = DownloadStatus.notDownloaded;
       }
+    }
+    if (mounted) {
+      setState(() {
+        _downloadedCount = count;
+      });
     }
   }
 
@@ -564,78 +570,179 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
       );
     }
 
-    return ListView.builder(
-      itemCount: _chapters.length,
-      itemBuilder: (context, index) {
-        final chapter = _chapters[index];
-        final hasBookmark = _bookmarkedChapters.contains(index);
-        final downloadStatus = _chapterDownloadStatus[index] ??
-            DownloadStatus.notDownloaded;
-        final isSelected = _selectedChapters.contains(index);
+    return Column(
+      children: [
+        // 顶部操作区域
+        _buildTopActions(),
+        // 章节列表
+        Expanded(
+          child: ListView.builder(
+            itemCount: _chapters.length,
+            itemBuilder: (context, index) {
+              final chapter = _chapters[index];
+              final hasBookmark = _bookmarkedChapters.contains(index);
+              final downloadStatus = _chapterDownloadStatus[index] ??
+                  DownloadStatus.notDownloaded;
+              final isSelected = _selectedChapters.contains(index);
 
-        if (_isSelectionMode) {
-          // 多选模式
-          return ListTile(
-            leading: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Checkbox(
-                  value: isSelected,
-                  onChanged: _isDownloading
-                      ? null
-                      : (value) => _toggleSelection(index),
-                ),
-                CircleAvatar(
-                  child: Text('${index + 1}'),
-                ),
-              ],
+              if (_isSelectionMode) {
+                // 多选模式 - 目录样式
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  leading: Checkbox(
+                    value: isSelected,
+                    onChanged: _isDownloading
+                        ? null
+                        : (value) => _toggleSelection(index),
+                  ),
+                  title: Row(
+                    children: [
+                      Text(
+                        '第${index + 1}章',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(chapter.name),
+                      ),
+                      _buildDownloadStatusIcon(downloadStatus),
+                      if (hasBookmark) ...[
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.bookmark,
+                          size: 18,
+                          color: Theme.of(context).primaryColor,
+                        ),
+                      ],
+                    ],
+                  ),
+                  onTap: _isDownloading ? null : () => _toggleSelection(index),
+                );
+              } else {
+                // 普通模式 - 目录样式
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  title: Row(
+                    children: [
+                      Text(
+                        '第${index + 1}章',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(chapter.name),
+                      ),
+                      _buildDownloadStatusIcon(downloadStatus),
+                      if (hasBookmark) ...[
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.bookmark,
+                          size: 18,
+                          color: Theme.of(context).primaryColor,
+                        ),
+                      ],
+                    ],
+                  ),
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ReaderScreen(
+                          chapters: _chapters,
+                          initialIndex: index,
+                          source: widget.source,
+                          bookName: widget.bookName,
+                          bookUrl: widget.bookUrl,
+                        ),
+                      ),
+                    );
+                    // 返回时刷新书签状态和下载状态
+                    _loadBookmarkedChapters();
+                    _refreshDownloadStatus();
+                  },
+                );
+              }
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 顶部操作区域
+  Widget _buildTopActions() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              icon: _isDownloading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.download),
+              label: Text(_isDownloading ? '下载中...' : '批量下载'),
+              onPressed: _isDownloading ? null : _enterSelectionMode,
             ),
-            title: Text(chapter.name),
-            trailing: _buildDownloadStatusIcon(downloadStatus),
-            onTap: _isDownloading ? null : () => _toggleSelection(index),
-          );
-        } else {
-          // 普通模式
-          return ListTile(
-            leading: CircleAvatar(
-              child: Text('${index + 1}'),
-            ),
-            title: Text(chapter.name),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildDownloadStatusIcon(downloadStatus),
-                if (hasBookmark)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: Icon(
-                      Icons.bookmark,
-                      size: 20,
-                      color: Theme.of(context).primaryColor,
+          ),
+          if (_downloadedCount > 0) ...[
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.offline_pin,
+                    size: 16,
+                    color: Colors.green[700],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '已缓存 $_downloadedCount 章',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.green[700],
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
-            onTap: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ReaderScreen(
-                    chapters: _chapters,
-                    initialIndex: index,
-                    source: widget.source,
-                    bookName: widget.bookName,
-                    bookUrl: widget.bookUrl,
-                  ),
-                ),
-              );
-              // 返回时刷新书签状态和下载状态
-              _loadBookmarkedChapters();
-              _refreshDownloadStatus();
-            },
-          );
-        }
-      },
+          ],
+        ],
+      ),
     );
   }
 
