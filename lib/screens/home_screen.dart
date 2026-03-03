@@ -5,6 +5,7 @@ import '../services/book_source_service.dart';
 import '../services/bookshelf_service.dart';
 import '../services/search_service.dart';
 import '../services/reader_settings_service.dart';
+import '../services/chapter_cache_service.dart';
 import '../models/book_source.dart';
 import '../models/book.dart';
 import '../models/reader_settings.dart';
@@ -801,8 +802,100 @@ class _BookSourcePageState extends State<_BookSourcePage> {
 }
 
 /// 设置页面
-class _SettingsPage extends StatelessWidget {
+class _SettingsPage extends StatefulWidget {
   const _SettingsPage();
+
+  @override
+  State<_SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<_SettingsPage> {
+  final ChapterCacheService _cacheService = ChapterCacheService();
+  CacheStats? _cacheStats;
+  bool _isLoadingCacheStats = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCacheStats();
+  }
+
+  Future<void> _loadCacheStats() async {
+    setState(() {
+      _isLoadingCacheStats = true;
+    });
+
+    final stats = await _cacheService.getCacheStats();
+
+    if (mounted) {
+      setState(() {
+        _cacheStats = stats;
+        _isLoadingCacheStats = false;
+      });
+    }
+  }
+
+  Future<void> _clearCache() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认清理'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('确定要清理所有章节缓存吗？'),
+            const SizedBox(height: 8),
+            Text(
+              '缓存大小：${_cacheStats?.formattedSize ?? "未知"}',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '缓存文件数：${_cacheStats?.fileCount ?? 0} 个',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('清理'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      // 显示加载指示器
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      await _cacheService.clearAllCache();
+
+      if (mounted) {
+        // 关闭加载指示器
+        Navigator.pop(context);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('缓存已清理')),
+        );
+
+        // 刷新缓存统计
+        await _loadCacheStats();
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -827,6 +920,25 @@ class _SettingsPage extends StatelessWidget {
             onTap: () {
               // TODO: 实现字体大小设置
             },
+          ),
+          const Divider(),
+          // 缓存管理
+          ListTile(
+            leading: const Icon(Icons.cleaning_services),
+            title: const Text('清理缓存'),
+            subtitle: _isLoadingCacheStats
+                ? const Text('计算中...')
+                : Text(
+                    '${_cacheStats?.formattedSize ?? "0 B"} (${_cacheStats?.fileCount ?? 0} 个文件)',
+                  ),
+            trailing: _isLoadingCacheStats
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _isLoadingCacheStats ? null : _clearCache,
           ),
           const Divider(),
           ListTile(

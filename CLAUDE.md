@@ -64,6 +64,7 @@ lib/
 │   ├── bookshelf_service.dart   # Bookshelf CRUD operations
 │   ├── reader_settings_service.dart  # Reader settings persistence
 │   ├── chapter_cache_service.dart    # Chapter content persistent cache
+│   ├── batch_download_service.dart   # Batch chapter download with progress tracking
 │   ├── bookmark_service.dart    # Bookmark management (add/remove/list)
 │   └── source_test_service.dart      # Source validity testing service
 ├── widgets/                     # Reusable UI components
@@ -169,12 +170,25 @@ Book sources must be compatible with 阅读3.0 JSON format. Key fields:
 - **Visual Indicators**: Highlight current chapter, mark latest chapter
 - **Bookmark Toggle**: Add/remove from bookshelf via bookmark icon
 - **Bookmark Indicators**: Chapters with bookmarks show bookmark icon
+- **Batch Download**: Multi-select mode for batch chapter downloads
+  - Select all / Deselect all
+  - Download progress display (completed/total)
+  - Background download, non-blocking UI
+  - Cancel download at any time
+  - Download status indicators (not downloaded/downloading/downloaded/failed)
+  - Downloaded chapters saved to cache for offline reading
 
 ### Search Features (SearchScreen)
 - **Multi-Source Search**: Concurrent search across all enabled sources
 - **Streaming Results**: Results appear as they arrive
 - **Quick Add to Bookshelf**: ⊕ button on each search result
 - **Search History**: Auto-save keywords (max 20), click to re-search, clear all
+
+### Settings Features (HomeScreen - Settings Tab)
+- **Cache Management**: View and clear chapter cache
+  - Display cache size and file count
+  - One-click clear all cached chapters
+  - Confirmation dialog before clearing
 
 ## Important Implementation Details
 
@@ -197,6 +211,19 @@ When book source rules fail, `_tryCommonContentSelectors()` attempts common nove
 - Stores in `~/Documents/chapter_cache/` directory
 - 30-day cache expiry with automatic cleanup
 - Check cache before network request
+- `getCacheStats()` for cache statistics (file count, total size)
+- `clearAllCache()` for clearing all cached content
+
+### Batch Download
+
+`BatchDownloadService` manages chapter batch downloads:
+- Singleton service with progress stream
+- Concurrent downloads (default 3 concurrent)
+- Non-blocking background download
+- Real-time progress tracking via `progressStream`
+- Download status tracking (notDownloaded/downloading/downloaded/failed)
+- Cancelable downloads
+- Integrates with `ChapterCacheService` for storage
 
 ### Reader Settings Model
 
