@@ -944,13 +944,13 @@ class _SettingsPageState extends State<_SettingsPage> {
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('关于'),
-            subtitle: const Text('YueDu Flutter v1.0.0'),
+            subtitle: const Text('YueDu Flutter v2.0.0'),
             onTap: () {
               showAboutDialog(
                 context: context,
                 applicationName: '悦读',
-                applicationVersion: '1.0.0',
-                applicationLegalese: '开源阅读器',
+                applicationVersion: '2.0.0 - 章节批量下载版',
+                applicationLegalese: '开源阅读器，支持导入 JSON 书源',
               );
             },
           ),

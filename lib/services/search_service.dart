@@ -59,6 +59,14 @@ class ChapterContent {
   ChapterContent({required this.content, this.nextUrl});
 }
 
+/// 目录解析结果（内部使用）
+class _TocParseResult {
+  final List<Chapter> chapters;
+  final String? nextUrl;
+
+  _TocParseResult({required this.chapters, this.nextUrl});
+}
+
 /// 搜索服务
 class SearchService {
   /// 搜索用的 Dio（短超时，快速失败）
@@ -404,7 +412,7 @@ class SearchService {
     }
   }
 
-  /// 获取章节目录
+  /// 获取章节目录（支持分页）
   Future<List<Chapter>> getChapters(String bookUrl, BookSource source) async {
     // 清理 baseUrl
     String baseUrl = _cleanBaseUrl(source.bookSourceUrl);
@@ -412,74 +420,75 @@ class SearchService {
     print('📖 获取章节目录: $bookUrl');
     print('📖 书源: ${source.bookSourceName}');
 
-    // 使用内容专用长超时
-    final response = await _contentDio.get<String>(
-      bookUrl,
-      options: Options(
-        headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          if (source.header != null) ..._parseHeader(source.header!),
-        },
-      ),
-    );
-
     final rule = source.ruleToc;
     if (rule == null) {
       print('⚠️ 书源 ${source.bookSourceName} 没有目录规则');
       return [];
     }
 
-    print('📖 目录规则: chapterList=${rule.chapterList}, chapterName=${rule.chapterName}, chapterUrl=${rule.chapterUrl}');
+    print('📖 目录规则: chapterList=${rule.chapterList}, chapterName=${rule.chapterName}, chapterUrl=${rule.chapterUrl}, nextTocUrl=${rule.nextTocUrl}');
 
-    // 检测是否为 JSON 规则
-    final isJsonRule = rule.chapterList?.startsWith('\$') ?? false;
+    final allChapters = <Chapter>[];
+    String? currentUrl = bookUrl;
+    int pageCount = 0;
+    const maxPages = 20; // 防止无限循环，最多20页
 
-    List<Chapter> chapters;
-    if (isJsonRule) {
-      chapters = _parseJsonChapters(response.data, rule, baseUrl);
-    } else {
-      chapters = _parseHtmlChapters(response.data, rule, baseUrl);
-    }
+    while (currentUrl != null && pageCount < maxPages) {
+      pageCount++;
+      print('📖 正在获取第 $pageCount 页: $currentUrl');
 
-    print('📖 解析到 ${chapters.length} 个章节');
-    if (chapters.isNotEmpty) {
-      print('📖 前3章: ${chapters.take(3).map((c) => c.name).join(", ")}');
-    }
+      try {
+        // 使用内容专用长超时
+        final response = await _contentDio.get<String>(
+          currentUrl,
+          options: Options(
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              if (source.header != null) ..._parseHeader(source.header!),
+            },
+          ),
+        );
 
-    return chapters;
-  }
+        // 检测是否为 JSON 规则
+        final isJsonRule = rule.chapterList?.startsWith('\$') ?? false;
 
-  /// 解析 JSON 章节列表
-  List<Chapter> _parseJsonChapters(String? data, RuleToc rule, String baseUrl) {
-    if (data == null) return [];
-
-    try {
-      final json = jsonDecode(data);
-      final chapters = <Chapter>[];
-
-      final chapterListPath = rule.chapterList?.substring(1) ?? '';
-      final chapterList = _getJsonValue(json, chapterListPath) as List? ?? [];
-
-      for (final item in chapterList) {
-        final name = _extractJsonText(item, rule.chapterName);
-        final url = _extractJsonUrl(item, rule.chapterUrl, baseUrl);
-
-        if (name != null && url != null) {
-          chapters.add(Chapter(name: name, url: url));
+        _TocParseResult result;
+        if (isJsonRule) {
+          result = _parseJsonChaptersWithNextUrl(response.data, rule, baseUrl);
+        } else {
+          result = _parseHtmlChaptersWithNextUrl(response.data, rule, baseUrl);
         }
-      }
 
-      return chapters;
-    } catch (e) {
-      print('JSON章节解析失败: $e');
-      return [];
+        allChapters.addAll(result.chapters);
+        print('📖 第 $pageCount 页解析到 ${result.chapters.length} 个章节，累计 ${allChapters.length} 个');
+
+        // 获取下一页URL
+        currentUrl = result.nextUrl;
+        if (currentUrl != null) {
+          print('📖 发现下一页: $currentUrl');
+        }
+      } catch (e) {
+        print('⚠️ 获取第 $pageCount 页失败: $e');
+        break;
+      }
     }
+
+    if (pageCount >= maxPages) {
+      print('⚠️ 达到最大页数限制 ($maxPages 页)');
+    }
+
+    print('📖 总共解析到 ${allChapters.length} 个章节，共 $pageCount 页');
+    if (allChapters.isNotEmpty) {
+      print('📖 前3章: ${allChapters.take(3).map((c) => c.name).join(", ")}');
+    }
+
+    return allChapters;
   }
 
-  /// 解析 HTML 章节列表
-  List<Chapter> _parseHtmlChapters(String? data, RuleToc rule, String baseUrl) {
-    if (data == null) return [];
+  /// 解析 HTML 章节列表（包含下一页URL）
+  _TocParseResult _parseHtmlChaptersWithNextUrl(String? data, RuleToc rule, String baseUrl) {
+    if (data == null) return _TocParseResult(chapters: [], nextUrl: null);
 
     final document = parse(data);
     final chapters = <Chapter>[];
@@ -507,7 +516,53 @@ class SearchService {
       }
     }
 
-    return chapters;
+    // 提取下一页URL
+    String? nextUrl;
+    if (rule.nextTocUrl != null && rule.nextTocUrl!.isNotEmpty) {
+      nextUrl = _extractUrlNew(document.documentElement, rule.nextTocUrl, baseUrl);
+    }
+
+    return _TocParseResult(chapters: chapters, nextUrl: nextUrl);
+  }
+
+  /// 解析 JSON 章节列表（包含下一页URL）
+  _TocParseResult _parseJsonChaptersWithNextUrl(String? data, RuleToc rule, String baseUrl) {
+    if (data == null) return _TocParseResult(chapters: [], nextUrl: null);
+
+    try {
+      final json = jsonDecode(data);
+      final chapters = <Chapter>[];
+
+      final chapterListPath = rule.chapterList?.substring(1) ?? '';
+      final chapterList = _getJsonValue(json, chapterListPath) as List? ?? [];
+
+      for (final item in chapterList) {
+        final name = _extractJsonText(item, rule.chapterName);
+        final url = _extractJsonUrl(item, rule.chapterUrl, baseUrl);
+
+        if (name != null && url != null) {
+          chapters.add(Chapter(name: name, url: url));
+        }
+      }
+
+      // 提取下一页URL（JSON格式通常在特定字段中）
+      String? nextUrl;
+      if (rule.nextTocUrl != null && rule.nextTocUrl!.isNotEmpty) {
+        // 对于JSON，nextTocUrl可能是类似 $.nextUrl 的路径
+        if (rule.nextTocUrl!.startsWith('\$')) {
+          final nextPath = rule.nextTocUrl!.substring(1);
+          final nextValue = _getJsonValue(json, nextPath);
+          if (nextValue is String && nextValue.isNotEmpty) {
+            nextUrl = _resolveUrl(nextValue, baseUrl);
+          }
+        }
+      }
+
+      return _TocParseResult(chapters: chapters, nextUrl: nextUrl);
+    } catch (e) {
+      print('JSON章节解析失败: $e');
+      return _TocParseResult(chapters: [], nextUrl: null);
+    }
   }
 
   /// 获取元素列表（支持 Legado 规则格式）
