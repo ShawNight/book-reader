@@ -546,12 +546,23 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
+  /// 根据主题背景色判断是否为深色背景
+  bool _isDarkBackground(Color color) {
+    // 计算亮度，亮度小于 0.5 认为是深色背景
+    return color.computeLuminance() < 0.5;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDark = _isDarkBackground(_settings.theme.backgroundColor);
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
+      value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
         systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
       child: Scaffold(
         backgroundColor: _settings.theme.backgroundColor,
@@ -1176,6 +1187,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
     // 刷新下载状态
     _refreshDownloadStatus();
 
+    // 获取状态栏高度
+    final statusBarHeight = MediaQuery.of(context).padding.top;
+
     showDialog(
       context: context,
       barrierColor: Colors.transparent,
@@ -1188,7 +1202,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 color: Colors.transparent,
                 child: Stack(
                   children: [
-                    // 左侧抽屉
+                    // 左侧抽屉 - 延伸到状态栏区域
                     Positioned(
                       left: 0,
                       top: 0,
@@ -1209,10 +1223,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           ),
                           child: Column(
                             children: [
-                              // 标题栏 - 铺满顶部
+                              // 状态栏占位区域 - 使用主题背景色
                               Container(
-                                padding: EdgeInsets.only(
-                                  top: MediaQuery.of(context).padding.top + 12,
+                                height: statusBarHeight,
+                                color: Theme.of(context).primaryColor,
+                              ),
+                              // 标题栏
+                              Container(
+                                padding: const EdgeInsets.only(
                                   left: 16,
                                   right: 16,
                                   bottom: 12,
