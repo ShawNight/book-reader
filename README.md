@@ -4,6 +4,7 @@
 
 ## 功能特性
 
+- **主题切换** - 支持浅色/深色/系统主题 (NEW!)
 - **书源导入** - 支持 JSON 格式书源批量导入
 - **书源净化** - 测试书源有效性，一键删除无效书源
 - **多源搜索** - 多书源并发搜索，结果实时显示
@@ -12,7 +13,8 @@
 - **一键阅读** - 点击书架书籍直接打开上次阅读位置
 - **章节目录** - 搜索、排序、分组浏览，支持"继续阅读"
 - **批量下载** - 多选章节批量下载，支持后台下载和进度显示
-- **阅读器** - 多种翻页模式、主题切换、阅读设置
+- **阅读器** - 多种翻页模式（含封面翻页动画）、主题切换、阅读设置
+- **章节分页** - 自动加载多页章节内容 (NEW!)
 - **进度追踪** - 自动保存章节进度和滚动位置
 - **离线缓存** - 自动缓存章节内容（30天有效期）
 - **缓存管理** - 查看缓存大小，一键清理缓存
@@ -186,6 +188,8 @@ flutter build apk --release  # Release 版本
 ├── bookshelf.json           # 书架数据
 ├── reader_settings.json     # 阅读设置
 ├── search_history.json      # 搜索历史
+├── bookmarks.json           # 阅读书签
+├── app_settings.json        # App 设置（主题模式等） (NEW!)
 ├── book_sources/
 │   └── sources.json         # 书源数据
 └── chapter_cache/           # 章节缓存
@@ -210,6 +214,7 @@ cp -r ~/.local/share/yuedu_flutter/book_sources ~/backup/
 | html | HTML 解析 |
 | json_annotation | JSON 序列化 |
 | path_provider | 文件存储 |
+| shared_preferences | App 设置持久化 |
 | crypto | MD5 缓存键 |
 
 ## 项目结构
@@ -230,9 +235,16 @@ lib/
 │   ├── reader_settings_service.dart
 │   ├── chapter_cache_service.dart
 │   ├── batch_download_service.dart  # 批量下载服务
-│   └── source_test_service.dart  # 书源测试服务
+│   ├── source_test_service.dart  # 书源测试服务
+│   └── app_settings_service.dart  # App 设置服务 (NEW!)
 ├── widgets/                  # 可复用组件
-│   └── simulation_page_turn.dart  # 仿真翻页动画
+│   ├── simulation_page_turn.dart  # 仿真翻页动画
+│   ├── cover_page_turn.dart       # 封面翻页动画 (NEW!)
+│   └── common_widgets.dart       # 通用组件 (NEW!)
+├── theme/                    # 主题和设计常量 (NEW!)
+│   ├── app_colors.dart       # 颜色常量
+│   ├── app_spacing.dart      # 间距常量
+│   └── app_theme.dart        # 主题定义
 └── screens/                  # 界面
     ├── home_screen.dart
     ├── search_screen.dart

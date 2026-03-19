@@ -6,6 +6,8 @@ import '../models/book_source.dart';
 import '../models/source_test_result.dart';
 import '../services/book_source_service.dart';
 import '../services/source_test_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
 
 /// 书源净化筛选类型
 enum PurifyFilterType {
@@ -95,7 +97,9 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
             if (progress.lastResult != null) {
               // 更新对应书源的结果
               final index = _results.indexWhere(
-                (r) => r.source.bookSourceUrl == progress.lastResult!.source.bookSourceUrl,
+                (r) =>
+                    r.source.bookSourceUrl ==
+                    progress.lastResult!.source.bookSourceUrl,
               );
               if (index >= 0) {
                 _results[index] = progress.lastResult!;
@@ -138,9 +142,10 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
   /// 净化无效书源
   Future<void> _purifyInvalidSources() async {
     final invalidSources = _results
-        .where((r) => r.status != SourceTestStatus.success &&
-                      r.status != SourceTestStatus.pending &&
-                      r.status != SourceTestStatus.testing)
+        .where((r) =>
+            r.status != SourceTestStatus.success &&
+            r.status != SourceTestStatus.pending &&
+            r.status != SourceTestStatus.testing)
         .toList();
 
     if (invalidSources.isEmpty) {
@@ -191,15 +196,17 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
       case PurifyFilterType.valid:
         return _results.where((r) => r.isValid).toList();
       case PurifyFilterType.invalid:
-        return _results.where((r) =>
-          r.status == SourceTestStatus.failed ||
-          r.status == SourceTestStatus.timeout
-        ).toList();
+        return _results
+            .where((r) =>
+                r.status == SourceTestStatus.failed ||
+                r.status == SourceTestStatus.timeout)
+            .toList();
       case PurifyFilterType.pending:
-        return _results.where((r) =>
-          r.status == SourceTestStatus.pending ||
-          r.status == SourceTestStatus.testing
-        ).toList();
+        return _results
+            .where((r) =>
+                r.status == SourceTestStatus.pending ||
+                r.status == SourceTestStatus.testing)
+            .toList();
       case PurifyFilterType.all:
       default:
         return _results;
@@ -248,7 +255,8 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
             TextButton.icon(
               onPressed: _purifyInvalidSources,
               icon: const Icon(Icons.delete_sweep, color: Colors.white),
-              label: const Text('净化', style: TextStyle(color: Colors.white)),
+              label: const Text('净化',
+                  style: TextStyle(color: AppColors.cardBackground)),
             ),
         ],
       ),
@@ -284,7 +292,7 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
   /// 构建进度区域
   Widget _buildProgressArea(Map<String, int> stats, int total) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: AppSpacing.paddingLg,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
@@ -294,10 +302,10 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildStatItem('总计', total, Colors.grey),
-              _buildStatItem('有效', stats['valid']!, Colors.green),
-              _buildStatItem('无效', stats['invalid']!, Colors.red),
-              _buildStatItem('待测', stats['pending']!, Colors.orange),
+              _buildStatItem('总计', total, AppColors.grey),
+              _buildStatItem('有效', stats['valid']!, AppColors.success),
+              _buildStatItem('无效', stats['invalid']!, AppColors.error),
+              _buildStatItem('待测', stats['pending']!, AppColors.warning),
             ],
           ),
 
@@ -312,38 +320,38 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
                 children: [
                   Text(
                     '进度: $_completed / $total',
-                    style: const TextStyle(fontSize: 12),
+                    style: const TextStyle(fontSize: AppSpacing.sm + 1),
                   ),
                   Text(
                     '${total > 0 ? ((_completed / total) * 100).toStringAsFixed(0) : 0}%',
-                    style: const TextStyle(fontSize: 12),
+                    style: const TextStyle(fontSize: AppSpacing.sm + 1),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.xs),
               LinearProgressIndicator(
                 value: total > 0 ? _completed / total : 0,
-                minHeight: 8,
-                borderRadius: BorderRadius.circular(4),
+                minHeight: AppSpacing.sm,
+                borderRadius: AppSpacing.buttonBorderRadius,
               ),
             ],
           ),
 
           // 当前测试的书源
           if (_currentSourceName != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
             Row(
               children: [
                 const SizedBox(
-                  width: 16,
-                  height: 16,
+                  width: AppSpacing.md,
+                  height: AppSpacing.md,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     '正在测试: $_currentSourceName',
-                    style: const TextStyle(fontSize: 12),
+                    style: const TextStyle(fontSize: AppSpacing.sm + 1),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -362,7 +370,7 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
         Text(
           count.toString(),
           style: TextStyle(
-            fontSize: 24,
+            fontSize: AppSpacing.xl,
             fontWeight: FontWeight.bold,
             color: color,
           ),
@@ -370,8 +378,8 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
         Text(
           label,
           style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
+            fontSize: AppSpacing.sm + 1,
+            color: AppColors.greyDark,
           ),
         ),
       ],
@@ -381,18 +389,19 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
   /// 构建筛选器
   Widget _buildFilterChips(Map<String, int> stats) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: AppSpacing.paddingSm,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
             _buildFilterChip('全部', PurifyFilterType.all, _results.length),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.sm),
             _buildFilterChip('有效', PurifyFilterType.valid, stats['valid']!),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.sm),
             _buildFilterChip('无效', PurifyFilterType.invalid, stats['invalid']!),
-            const SizedBox(width: 8),
-            _buildFilterChip('待测试', PurifyFilterType.pending, stats['pending']!),
+            const SizedBox(width: AppSpacing.sm),
+            _buildFilterChip(
+                '待测试', PurifyFilterType.pending, stats['pending']!),
           ],
         ),
       ),
@@ -427,14 +436,12 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
                   ? Icons.source
                   : Icons.filter_list,
               size: 64,
-              color: Colors.grey[400],
+              color: AppColors.grey,
             ),
             const SizedBox(height: 16),
             Text(
-              _filterType == PurifyFilterType.all
-                  ? '暂无书源'
-                  : '没有符合条件的结果',
-              style: TextStyle(color: Colors.grey[600]),
+              _filterType == PurifyFilterType.all ? '暂无书源' : '没有符合条件的结果',
+              style: TextStyle(color: AppColors.textSecondary),
             ),
           ],
         ),
@@ -484,14 +491,14 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
                 const SizedBox(width: 8),
                 Text(
                   '耗时: ${result.responseTime!.inMilliseconds}ms',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  style: TextStyle(fontSize: 11, color: AppColors.greyDark),
                 ),
               ],
               if (result.resultCount != null && result.isValid) ...[
                 const SizedBox(width: 8),
                 Text(
                   '结果: ${result.resultCount}条',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  style: TextStyle(fontSize: 11, color: AppColors.greyDark),
                 ),
               ],
             ],
@@ -500,7 +507,7 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
             const SizedBox(height: 2),
             Text(
               '错误: ${result.errorMessage}',
-              style: TextStyle(fontSize: 11, color: Colors.red[400]),
+              style: TextStyle(fontSize: 11, color: AppColors.error),
             ),
           ],
         ],
@@ -513,15 +520,15 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
   (IconData, Color, String) _getStatusDisplay(SourceTestStatus status) {
     switch (status) {
       case SourceTestStatus.pending:
-        return (Icons.hourglass_empty, Colors.grey, '待测试');
+        return (Icons.hourglass_empty, AppColors.grey, '待测试');
       case SourceTestStatus.testing:
-        return (Icons.sync, Colors.blue, '测试中');
+        return (Icons.sync, AppColors.info, '测试中');
       case SourceTestStatus.success:
-        return (Icons.check_circle, Colors.green, '有效');
+        return (Icons.check_circle, AppColors.success, '有效');
       case SourceTestStatus.failed:
-        return (Icons.cancel, Colors.red, '失败');
+        return (Icons.cancel, AppColors.error, '失败');
       case SourceTestStatus.timeout:
-        return (Icons.schedule, Colors.orange, '超时');
+        return (Icons.schedule, AppColors.warning, '超时');
     }
   }
 }

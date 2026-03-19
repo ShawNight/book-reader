@@ -66,9 +66,16 @@ lib/
 │   ├── chapter_cache_service.dart    # Chapter content persistent cache
 │   ├── batch_download_service.dart   # Batch chapter download with progress tracking
 │   ├── bookmark_service.dart    # Bookmark management (add/remove/list)
-│   └── source_test_service.dart      # Source validity testing service
+│   ├── source_test_service.dart      # Source validity testing service
+│   └── app_settings_service.dart     # App-level settings (theme mode persistence)
 ├── widgets/                     # Reusable UI components
-│   └── simulation_page_turn.dart     # Simulation page turn animation widget
+│   ├── simulation_page_turn.dart     # Simulation page turn animation widget
+│   ├── cover_page_turn.dart          # Cover page turn animation widget
+│   └── common_widgets.dart           # Shared UI components
+├── theme/                      # Theme and design constants
+│   ├── app_colors.dart         # Color palette constants
+│   ├── app_spacing.dart        # Spacing and sizing constants
+│   └── app_theme.dart          # Light/dark theme definitions
 └── screens/                     # UI layer
     ├── home_screen.dart         # Tab navigation (Bookshelf, Sources, Settings)
     ├── search_screen.dart       # Multi-source search with streaming results
@@ -254,7 +261,7 @@ When book source rules fail, `_tryCommonContentSelectors()` attempts common nove
 ### Page Turn Implementation
 
 - **Slide Mode**: Default PageView horizontal swipe
-- **Cover Mode**: PageView with cover transition
+- **Cover Mode**: Custom `CoverPageTurn` widget with overlay transition effect
 - **Simulation Mode**: Custom `SimulationPageTurn` widget with:
   - Realistic page flip animation with shadow effects
   - Gesture-based dragging for manual page turn
@@ -272,6 +279,7 @@ All data stored in app documents directory:
 ├── reader_settings.json     # Reader settings
 ├── search_history.json      # Search history keywords
 ├── bookmarks.json           # Reading bookmarks
+├── app_settings.json        # App settings (theme mode, etc.)
 ├── book_sources/
 │   └── sources.json         # Imported book sources
 └── chapter_cache/           # Cached chapter content (MD5 keys)
@@ -292,6 +300,7 @@ Key dependencies in `pubspec.yaml`:
 - `html: ^0.15.4` - HTML parsing
 - `json_annotation: ^4.8.1` - JSON serialization
 - `path_provider: ^2.1.2` - File system access
+- `shared_preferences: ^2.2.2` - App settings persistence
 - `crypto: ^3.0.3` - MD5 hashing for cache keys
 - `file_selector: ^1.0.3` - File picker for importing sources
 - `url_launcher: ^6.2.2` - Open URLs in browser

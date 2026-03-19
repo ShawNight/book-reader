@@ -7,6 +7,8 @@ import '../services/bookshelf_service.dart';
 import '../services/book_source_service.dart';
 import '../services/search_history_service.dart';
 import '../models/book.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
 import 'chapter_list_screen.dart';
 
 /// 搜索页面
@@ -271,16 +273,16 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Row(
         children: [
           if (_isSearching)
             const Padding(
-              padding: EdgeInsets.only(right: 8),
+              padding: EdgeInsets.only(right: AppSpacing.sm),
               child: SizedBox(
-                width: 16,
-                height: 16,
+                width: AppSpacing.iconSizeSm,
+                height: AppSpacing.iconSizeSm,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
             ),
@@ -301,8 +303,8 @@ class _SearchScreenState extends State<SearchScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.error_outline, size: 48, color: Colors.grey),
-          const SizedBox(height: 16),
+          const Icon(Icons.error_outline, size: AppSpacing.iconSizeLg, color: AppColors.grey),
+          const SizedBox(height: AppSpacing.lg),
           Text(_error!),
           const SizedBox(height: 16),
           ElevatedButton(
@@ -327,14 +329,14 @@ class _SearchScreenState extends State<SearchScreen> {
       children: [
         // 历史记录标题栏
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
                 '搜索历史',
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: AppSpacing.sm + 2,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -352,10 +354,10 @@ class _SearchScreenState extends State<SearchScreen> {
             itemBuilder: (context, index) {
               final keyword = _searchHistory[index];
               return ListTile(
-                leading: const Icon(Icons.history, size: 20),
+                leading: const Icon(Icons.history, size: AppSpacing.iconSizeSm + 2),
                 title: Text(keyword),
                 trailing: IconButton(
-                  icon: const Icon(Icons.close, size: 18),
+                  icon: const Icon(Icons.close, size: AppSpacing.iconSizeSm),
                   onPressed: () => _removeHistoryItem(keyword),
                 ),
                 onTap: () => _searchWithKeyword(keyword),
@@ -415,8 +417,8 @@ class _SearchScreenState extends State<SearchScreen> {
           leading: result.coverUrl != null
               ? Image.network(
                   result.coverUrl!,
-                  width: 50,
-                  height: 70,
+                  width: AppSpacing.coverWidth,
+                  height: AppSpacing.coverHeight,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => const Icon(Icons.book),
                 )
@@ -434,9 +436,9 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               Text(
                 '来源：${result.source.bookSourceName}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
+                style: const TextStyle(
+                  fontSize: AppSpacing.sm + 1,
+                  color: AppColors.textSecondary,
                 ),
               ),
             ],

@@ -6,9 +6,12 @@ import '../services/bookshelf_service.dart';
 import '../services/search_service.dart';
 import '../services/reader_settings_service.dart';
 import '../services/chapter_cache_service.dart';
+import '../services/app_settings_service.dart';
 import '../models/book_source.dart';
 import '../models/book.dart';
 import '../models/reader_settings.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
 import 'search_screen.dart';
 import 'chapter_list_screen.dart';
 import 'reader_screen.dart';
@@ -92,7 +95,8 @@ class _BookshelfPageState extends State<_BookshelfPage> {
 
   Future<void> _loadBooks() async {
     final books = await _bookshelfService.loadBooks();
-    final sortedBooks = _bookshelfService.sortBooks(books, _sortMode, _sortAscending);
+    final sortedBooks =
+        _bookshelfService.sortBooks(books, _sortMode, _sortAscending);
     if (mounted) {
       setState(() {
         _books = sortedBooks;
@@ -164,13 +168,12 @@ class _BookshelfPageState extends State<_BookshelfPage> {
                       size: 18,
                       color: Theme.of(context).primaryColor,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppSpacing.sm),
                     Text(
                       mode.displayName,
                       style: TextStyle(
-                        color: isSelected
-                            ? Theme.of(context).primaryColor
-                            : null,
+                        color:
+                            isSelected ? Theme.of(context).primaryColor : null,
                         fontWeight:
                             isSelected ? FontWeight.bold : FontWeight.normal,
                       ),
@@ -229,7 +232,8 @@ class _BookshelfPageState extends State<_BookshelfPage> {
   /// 底部操作栏
   Widget _buildBottomActionBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: AppSpacing.horizontalLg
+          .copyWith(top: AppSpacing.sm, bottom: AppSpacing.sm),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         boxShadow: [
@@ -247,19 +251,19 @@ class _BookshelfPageState extends State<_BookshelfPage> {
             icon: Icons.delete,
             label: '删除',
             onPressed: _selectedBookUrls.isEmpty ? null : _batchDelete,
-            color: Colors.red,
+            color: AppColors.error,
           ),
           _buildActionButton(
             icon: Icons.check_circle,
             label: '标记已读',
             onPressed: _selectedBookUrls.isEmpty ? null : _batchMarkAsRead,
-            color: Colors.green,
+            color: AppColors.success,
           ),
           _buildActionButton(
             icon: Icons.radio_button_unchecked,
             label: '标记未读',
             onPressed: _selectedBookUrls.isEmpty ? null : _batchMarkAsUnread,
-            color: Colors.orange,
+            color: AppColors.warning,
           ),
         ],
       ),
@@ -281,13 +285,13 @@ class _BookshelfPageState extends State<_BookshelfPage> {
         children: [
           Icon(
             icon,
-            color: isEnabled ? color : Colors.grey,
+            color: isEnabled ? color : AppColors.grey,
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: TextStyle(
-              color: isEnabled ? color : Colors.grey,
+              color: isEnabled ? color : AppColors.grey,
               fontSize: 12,
             ),
           ),
@@ -306,11 +310,12 @@ class _BookshelfPageState extends State<_BookshelfPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.menu_book, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
+            Icon(Icons.menu_book,
+                size: AppSpacing.iconSizeXl, color: AppColors.grey),
+            SizedBox(height: AppSpacing.lg),
             Text('书架为空，点击右上角搜索按钮'),
-            SizedBox(height: 8),
-            Text('搜索前请先导入书源', style: TextStyle(color: Colors.grey)),
+            SizedBox(height: AppSpacing.sm),
+            Text('搜索前请先导入书源', style: TextStyle(color: AppColors.textSecondary)),
           ],
         ),
       );
@@ -342,8 +347,8 @@ class _BookshelfPageState extends State<_BookshelfPage> {
             book.coverUrl != null
                 ? Image.network(
                     book.coverUrl!,
-                    width: 50,
-                    height: 70,
+                    width: AppSpacing.coverWidth,
+                    height: AppSpacing.coverHeight,
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => const Icon(Icons.book),
                   )
@@ -357,12 +362,12 @@ class _BookshelfPageState extends State<_BookshelfPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
+                  color: AppColors.success.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
                   '已读',
-                  style: TextStyle(fontSize: 10, color: Colors.green),
+                  style: TextStyle(fontSize: 10, color: AppColors.success),
                 ),
               ),
           ],
@@ -376,7 +381,7 @@ class _BookshelfPageState extends State<_BookshelfPage> {
                 '读到：${book.lastReadChapterName}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Theme.of(context).primaryColor),
+                style: const TextStyle(color: AppColors.primary),
               ),
             if (book.latestChapter != null)
               Text(
@@ -386,9 +391,9 @@ class _BookshelfPageState extends State<_BookshelfPage> {
               ),
             Text(
               '来源：${book.sourceName}',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
-                color: Colors.grey[600],
+                color: AppColors.textSecondary,
               ),
             ),
           ],
@@ -404,16 +409,16 @@ class _BookshelfPageState extends State<_BookshelfPage> {
         onDismissed: (_) => _removeBook(book),
         background: Container(
           alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 16),
-          color: Colors.red,
+          padding: const EdgeInsets.only(right: AppSpacing.lg),
+          color: AppColors.error,
           child: const Icon(Icons.delete, color: Colors.white),
         ),
         child: ListTile(
           leading: book.coverUrl != null
               ? Image.network(
                   book.coverUrl!,
-                  width: 50,
-                  height: 70,
+                  width: AppSpacing.coverWidth,
+                  height: AppSpacing.coverHeight,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => const Icon(Icons.book),
                 )
@@ -423,14 +428,15 @@ class _BookshelfPageState extends State<_BookshelfPage> {
               Expanded(child: Text(book.name)),
               if (book.isRead)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
+                    color: AppColors.success.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Text(
                     '已读',
-                    style: TextStyle(fontSize: 10, color: Colors.green),
+                    style: TextStyle(fontSize: 10, color: AppColors.success),
                   ),
                 ),
             ],
@@ -444,7 +450,7 @@ class _BookshelfPageState extends State<_BookshelfPage> {
                   '读到：${book.lastReadChapterName}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Theme.of(context).primaryColor),
+                  style: const TextStyle(color: AppColors.primary),
                 ),
               if (book.latestChapter != null)
                 Text(
@@ -454,9 +460,9 @@ class _BookshelfPageState extends State<_BookshelfPage> {
                 ),
               Text(
                 '来源：${book.sourceName}',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 12,
-                  color: Colors.grey[600],
+                  color: AppColors.textSecondary,
                 ),
               ),
             ],
@@ -578,7 +584,7 @@ class _BookshelfPageState extends State<_BookshelfPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('删除'),
           ),
         ],
@@ -652,7 +658,8 @@ class _BookshelfPageState extends State<_BookshelfPage> {
       }
 
       // 计算有效的章节索引
-      final initialIndex = (book.lastReadChapter ?? 0).clamp(0, chapters.length - 1);
+      final initialIndex =
+          (book.lastReadChapter ?? 0).clamp(0, chapters.length - 1);
 
       // 跳转到阅读器
       await Navigator.push(
@@ -793,8 +800,8 @@ class _BookSourcePageState extends State<_BookSourcePage> {
           title: Text(source.bookSourceName),
           subtitle: Text(source.bookSourceUrl),
           trailing: source.enabled == true
-              ? const Icon(Icons.check_circle, color: Colors.green)
-              : const Icon(Icons.cancel, color: Colors.grey),
+              ? const Icon(Icons.check_circle, color: AppColors.success)
+              : const Icon(Icons.cancel, color: AppColors.grey),
         );
       },
     );
@@ -811,13 +818,16 @@ class _SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<_SettingsPage> {
   final ChapterCacheService _cacheService = ChapterCacheService();
+  final AppSettingsService _appSettings = AppSettingsService();
   CacheStats? _cacheStats;
   bool _isLoadingCacheStats = true;
+  ThemeMode _currentThemeMode = ThemeMode.system;
 
   @override
   void initState() {
     super.initState();
     _loadCacheStats();
+    _currentThemeMode = _appSettings.themeMode;
   }
 
   Future<void> _loadCacheStats() async {
@@ -848,12 +858,12 @@ class _SettingsPageState extends State<_SettingsPage> {
             const SizedBox(height: 8),
             Text(
               '缓存大小：${_cacheStats?.formattedSize ?? "未知"}',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
             const SizedBox(height: 4),
             Text(
               '缓存文件数：${_cacheStats?.fileCount ?? 0} 个',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
           ],
         ),
@@ -864,7 +874,7 @@ class _SettingsPageState extends State<_SettingsPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('清理'),
           ),
         ],
@@ -908,9 +918,55 @@ class _SettingsPageState extends State<_SettingsPage> {
           ListTile(
             leading: const Icon(Icons.dark_mode),
             title: const Text('主题模式'),
-            subtitle: const Text('跟随系统'),
-            onTap: () {
-              // TODO: 实现主题切换
+            subtitle: Text(AppSettingsService.getThemeModeText(_currentThemeMode)),
+            onTap: () async {
+              final selected = await showDialog<ThemeMode>(
+                context: context,
+                builder: (context) => SimpleDialog(
+                  title: const Text('选择主题模式'),
+                  children: ThemeMode.values.map((mode) {
+                    return SimpleDialogOption(
+                      onPressed: () => Navigator.pop(context, mode),
+                      child: Row(
+                        children: [
+                          Icon(
+                            mode == ThemeMode.system
+                                ? Icons.brightness_auto
+                                : mode == ThemeMode.light
+                                    ? Icons.light_mode
+                                    : Icons.dark_mode,
+                            color: _currentThemeMode == mode
+                                ? AppColors.primary
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            AppSettingsService.getThemeModeText(mode),
+                            style: TextStyle(
+                              color: _currentThemeMode == mode
+                                  ? AppColors.primary
+                                  : null,
+                              fontWeight: _currentThemeMode == mode
+                                  ? FontWeight.bold
+                                  : null,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (_currentThemeMode == mode)
+                            const Icon(Icons.check, color: AppColors.primary),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+
+              if (selected != null) {
+                await _appSettings.setThemeMode(selected);
+                setState(() {
+                  _currentThemeMode = selected;
+                });
+              }
             },
           ),
           ListTile(

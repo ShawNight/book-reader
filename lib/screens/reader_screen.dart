@@ -14,6 +14,7 @@ import '../services/chapter_cache_service.dart';
 import '../services/bookmark_service.dart';
 import '../services/batch_download_service.dart';
 import '../widgets/simulation_page_turn.dart';
+import '../widgets/cover_page_turn.dart';
 import '../widgets/content_with_images.dart';
 
 /// 阅读页面
@@ -47,7 +48,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final BookmarkService _bookmarkService = BookmarkService();
   final BatchDownloadService _downloadService = BatchDownloadService();
   final PageController _pageController = PageController();
-  final SimulationPageTurnController _simulationController = SimulationPageTurnController();
+  final SimulationPageTurnController _simulationController =
+      SimulationPageTurnController();
+  final CoverPageTurnController _coverController = CoverPageTurnController();
 
   late int _currentIndex;
   final Map<int, String> _contentCache = {};
@@ -87,16 +90,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void initState() {
     super.initState();
-    // 进入阅读器时全屏，隐藏系统状态栏和导航栏
+    // 进入阅读器时使用 immersive 模式，完全隐藏状态栏
     SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.immersiveSticky,
-    );
-    // 设置透明状态栏，让内容延伸到状态栏区域
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor: Colors.transparent,
-      ),
     );
 
     _currentIndex = widget.initialIndex;
@@ -167,7 +163,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   Future<void> _loadBookmarks() async {
     if (widget.bookUrl == null) return;
 
-    final bookmarks = await _bookmarkService.getBookmarksForBook(widget.bookUrl!);
+    final bookmarks =
+        await _bookmarkService.getBookmarksForBook(widget.bookUrl!);
     if (mounted) {
       setState(() {
         _bookmarks = bookmarks;
@@ -290,7 +287,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
           chapterName: widget.chapters[_currentIndex].name,
           scrollProgress: _chapterProgress,
         );
-        print('已保存阅读进度: 章节 $_currentIndex, 进度 ${(_chapterProgress * 100).toInt()}%');
+        print(
+            '已保存阅读进度: 章节 $_currentIndex, 进度 ${(_chapterProgress * 100).toInt()}%');
       }
     });
   }
@@ -324,11 +322,48 @@ class _ReaderScreenState extends State<ReaderScreen> {
       } else {
         // 缓存不存在，从网络加载
         print('从网络加载章节: ${widget.chapters[index].name}');
-        final result = await _searchService.getChapterContent(
+
+        // 获取第一页内容
+        var result = await _searchService.getChapterContent(
           chapterUrl,
           widget.source,
         );
-        content = result.content;
+        StringBuffer fullContent = StringBuffer(result.content);
+
+        // 处理分页：循环获取后续页面
+        String? nextUrl = result.nextUrl;
+        int pageCount = 1;
+        while (nextUrl != null && nextUrl.isNotEmpty) {
+          pageCount++;
+          print('📖 加载第 $pageCount 页: $nextUrl');
+
+          // 获取下一页内容
+          final pageResult = await _searchService.getChapterContent(
+            nextUrl,
+            widget.source,
+          );
+
+          // 追加内容
+          if (pageResult.content.isNotEmpty) {
+            fullContent.write('\n\n');
+            fullContent.write(pageResult.content);
+          }
+
+          // 更新 nextUrl
+          nextUrl = pageResult.nextUrl;
+
+          // 防止无限循环
+          if (pageCount > 100) {
+            print('⚠️ 分页过多，可能存在循环，跳过');
+            break;
+          }
+        }
+
+        if (pageCount > 1) {
+          print('📖 章节共 $pageCount 页，总内容长度: ${fullContent.length} 字符');
+        }
+
+        content = fullContent.toString();
 
         // 保存到缓存
         await _cacheService.saveCache(
@@ -393,10 +428,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  /// 滑动翻页视图（默认 PageView）
+  /// 滑动翻页视图（默认 PageView）- 页面水平滑动
   Widget _buildSlideView() {
     return PageView.builder(
       controller: _pageController,
+      scrollDirection: Axis.horizontal,
       itemCount: widget.chapters.length,
       itemBuilder: (context, index) {
         return _buildChapterPage(index);
@@ -404,28 +440,33 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  /// 覆盖翻页视图
+  /// 覆盖翻页视图 - 新页面覆盖在旧页面之上
   Widget _buildCoverView() {
-    return PageView.builder(
-      controller: _pageController,
+    return CoverPageTurn(
+      controller: _coverController,
       itemCount: widget.chapters.length,
-      pageSnapping: true,
-      physics: const PageScrollPhysics(),
+      onPageChanged: (index) {
+        if (index != _currentIndex) {
+          setState(() {
+            _currentIndex = index;
+            _chapterProgress = 0.0;
+          });
+          _onChapterChanged(index);
+        }
+      },
       itemBuilder: (context, index) {
         return _buildChapterPage(index);
       },
     );
   }
 
-  /// 滚动翻页视图
+  /// 滚动翻页视图 - 垂直滚动
   Widget _buildScrollView() {
     return ListView.builder(
       itemCount: widget.chapters.length,
       itemBuilder: (context, index) {
-        // 滚动模式下，章节直接垂直排列
         final content = _contentCache[index];
         if (content == null) {
-          // 触发加载
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _loadChapter(index);
           });
@@ -435,7 +476,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  /// 仿真翻页视图
+  /// 仿真翻页视图 - 真实翻页效果
   Widget _buildSimulationView() {
     return SimulationPageTurn(
       controller: _simulationController,
@@ -447,27 +488,28 @@ class _ReaderScreenState extends State<ReaderScreen> {
             _currentIndex = index;
             _chapterProgress = 0.0;
           });
-
-          // 预加载下一章节
-          if (index + 1 < widget.chapters.length &&
-              !_contentCache.containsKey(index + 1)) {
-            _loadChapter(index + 1);
-          }
-
-          // 更新阅读进度
-          if (widget.bookUrl != null) {
-            _bookshelfService.updateReadProgress(
-              widget.bookUrl!,
-              chapterIndex: index,
-              chapterName: widget.chapters[index].name,
-            );
-          }
+          _onChapterChanged(index);
         }
       },
       itemBuilder: (context, index) {
         return _buildChapterPage(index);
       },
     );
+  }
+
+  /// 章节变化时的统一处理
+  void _onChapterChanged(int index) {
+    if (index + 1 < widget.chapters.length &&
+        !_contentCache.containsKey(index + 1)) {
+      _loadChapter(index + 1);
+    }
+    if (widget.bookUrl != null) {
+      _bookshelfService.updateReadProgress(
+        widget.bookUrl!,
+        chapterIndex: index,
+        chapterName: widget.chapters[index].name,
+      );
+    }
   }
 
   /// 构建可滚动章节页面（用于滚动翻页模式）
@@ -504,11 +546,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     return Container(
       color: theme.backgroundColor,
-      padding: EdgeInsets.symmetric(
-        vertical: _settings.verticalPadding,
-        horizontal: _settings.horizontalPadding,
+      padding: EdgeInsets.only(
+        top: _settings.verticalPadding,
+        bottom: _settings.verticalPadding,
+        left: _settings.horizontalPadding,
+        right: _settings.horizontalPadding,
       ),
       child: SafeArea(
+        top: false, // 让内容延伸到状态栏区域
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -555,153 +600,163 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = _isDarkBackground(_settings.theme.backgroundColor);
+    final backgroundColor = _settings.theme.backgroundColor;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
+        statusBarColor: backgroundColor,
         statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
         statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-        systemNavigationBarColor: Colors.transparent,
-        systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: backgroundColor,
+        systemNavigationBarIconBrightness:
+            isDark ? Brightness.light : Brightness.dark,
       ),
-      child: Scaffold(
-        backgroundColor: _settings.theme.backgroundColor,
-        body: GestureDetector(
-          onTap: _toggleControls,
-          child: Stack(
-            children: [
-              // 内容区域 - 根据翻页模式选择不同的实现
-              _buildContentView(),
+      child: Container(
+        color: _settings.theme.backgroundColor,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: GestureDetector(
+            onTap: _toggleControls,
+            child: Stack(
+              children: [
+                // 内容区域 - 根据翻页模式选择不同的实现
+                _buildContentView(),
 
-              // 顶部控制栏（透明，只显示更多按钮）
-              if (_showControls)
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: SafeArea(
-                    child: PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert, color: Colors.white70),
-                      color: Colors.black87,
-                      onSelected: (value) {
-                        if (value == 'add_bookmark') {
-                          _toggleBookmark();
-                        } else if (value == 'directory') {
-                          _showChapterList();
-                        } else if (value == 'back') {
-                          Navigator.pop(context);
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        PopupMenuItem(
-                          value: 'directory',
-                          child: ListTile(
-                            leading: const Icon(Icons.list),
-                            title: const Text('目录'),
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'add_bookmark',
-                          child: ListTile(
-                            leading: Icon(
-                              _hasBookmarkAtCurrentPosition
-                                  ? Icons.bookmark
-                                  : Icons.bookmark_add,
-                            ),
-                            title: Text(
-                              _hasBookmarkAtCurrentPosition ? '移除书签' : '添加书签',
+                // 顶部控制栏（透明，只显示更多按钮）
+                if (_showControls)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: SafeArea(
+                      child: PopupMenuButton<String>(
+                        icon:
+                            const Icon(Icons.more_vert, color: Colors.white70),
+                        color: Colors.black87,
+                        onSelected: (value) {
+                          if (value == 'add_bookmark') {
+                            _toggleBookmark();
+                          } else if (value == 'directory') {
+                            _showChapterList();
+                          } else if (value == 'back') {
+                            Navigator.pop(context);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'directory',
+                            child: ListTile(
+                              leading: const Icon(Icons.list),
+                              title: const Text('目录'),
                             ),
                           ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'back',
-                          child: ListTile(
-                            leading: Icon(Icons.arrow_back),
-                            title: Text('返回'),
+                          PopupMenuItem(
+                            value: 'add_bookmark',
+                            child: ListTile(
+                              leading: Icon(
+                                _hasBookmarkAtCurrentPosition
+                                    ? Icons.bookmark
+                                    : Icons.bookmark_add,
+                              ),
+                              title: Text(
+                                _hasBookmarkAtCurrentPosition ? '移除书签' : '添加书签',
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // 底部控制栏（透明，点击设置图标展开详细设置）
-              if (_showControls)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: SafeArea(
-                    top: false,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      color: Colors.black45,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          // 目录按钮
-                          IconButton(
-                            icon: const Icon(Icons.list, color: Colors.white70),
-                            onPressed: () => _showChapterList(),
-                          ),
-                          // 字体大小调节
-                          _buildBottomSettingItem(
-                            icon: Icons.text_fields,
-                            value: _settings.fontSize.round().toString(),
-                            onTap: () => _showFontSizeDialog(),
-                          ),
-                          // 翻页模式
-                          _buildBottomSettingItem(
-                            icon: Icons.menu_book,
-                            value: _settings.pageTurnMode.displayName,
-                            onTap: () => _showPageTurnModeDialog(),
-                          ),
-                          // 设置按钮（展开详细设置）
-                          IconButton(
-                            icon: const Icon(Icons.settings, color: Colors.white70),
-                            onPressed: () => _showDetailedSettings(),
+                          const PopupMenuItem(
+                            value: 'back',
+                            child: ListTile(
+                              leading: Icon(Icons.arrow_back),
+                              title: Text('返回'),
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ),
-                ),
 
-              // 详细设置面板（向上滑出）
-              if (_showSettingsBar)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: SafeArea(
-                    top: false,
-                    child: Container(
-                      color: Colors.black87,
-                      child: _buildSettingsBarContent(),
-                    ),
-                  ),
-                ),
-
-              // 阅读进度百分比（右下角，仅当控制栏和设置栏都不显示时）
-              if (!_showControls && !_showSettingsBar)
-                Positioned(
-                  bottom: 16,
-                  right: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black38,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      '${(_chapterProgress * 100).toInt()}%',
-                      style: TextStyle(
-                        color: Colors.white60,
-                        fontSize: 12,
+                // 底部控制栏（透明，点击设置图标展开详细设置）
+                if (_showControls)
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      top: false,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        color: Colors.black45,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            // 目录按钮
+                            IconButton(
+                              icon:
+                                  const Icon(Icons.list, color: Colors.white70),
+                              onPressed: () => _showChapterList(),
+                            ),
+                            // 字体大小调节
+                            _buildBottomSettingItem(
+                              icon: Icons.text_fields,
+                              value: _settings.fontSize.round().toString(),
+                              onTap: () => _showFontSizeDialog(),
+                            ),
+                            // 翻页模式
+                            _buildBottomSettingItem(
+                              icon: Icons.menu_book,
+                              value: _settings.pageTurnMode.displayName,
+                              onTap: () => _showPageTurnModeDialog(),
+                            ),
+                            // 设置按钮（展开详细设置）
+                            IconButton(
+                              icon: const Icon(Icons.settings,
+                                  color: Colors.white70),
+                              onPressed: () => _showDetailedSettings(),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
+
+                // 详细设置面板（向上滑出）
+                if (_showSettingsBar)
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      top: false,
+                      child: Container(
+                        color: Colors.black87,
+                        child: _buildSettingsBarContent(),
+                      ),
+                    ),
+                  ),
+
+                // 阅读进度百分比（右下角，仅当控制栏和设置栏都不显示时）
+                if (!_showControls && !_showSettingsBar)
+                  Positioned(
+                    bottom: 16,
+                    right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black38,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        '${(_chapterProgress * 100).toInt()}%',
+                        style: TextStyle(
+                          color: Colors.white60,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -730,84 +785,161 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  /// 显示字号调节对话框
+  /// 显示字号调节底部面板
   void _showFontSizeDialog() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.black87,
+      isScrollControlled: true,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.black87,
-          title: const Text('字体大小', style: TextStyle(color: Colors.white)),
-          content: StatefulBuilder(
-            builder: (context, setState) {
-              return Row(
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('A', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                  Expanded(
-                    child: Slider(
-                      value: _settings.fontSize,
-                      min: 12,
-                      max: 32,
-                      divisions: 20,
-                      label: _settings.fontSize.round().toString(),
-                      onChanged: (v) => _updateSettings(fontSize: v),
-                    ),
+                  // 标题行
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '字体大小',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
                   ),
-                  const Text('A', style: TextStyle(color: Colors.white70, fontSize: 22)),
+                  const Divider(color: Colors.white24),
+                  const SizedBox(height: 16),
+                  // 字体大小调节
+                  Row(
+                    children: [
+                      const Text('A',
+                          style:
+                              TextStyle(color: Colors.white70, fontSize: 14)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Slider(
+                          value: _settings.fontSize,
+                          min: 12,
+                          max: 32,
+                          divisions: 20,
+                          label: _settings.fontSize.round().toString(),
+                          onChanged: (v) => _updateSettings(fontSize: v),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('A',
+                          style:
+                              TextStyle(color: Colors.white70, fontSize: 22)),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          _settings.fontSize.round().toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 16),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                 ],
-              );
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('确定', style: TextStyle(color: Colors.white70)),
-            ),
-          ],
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  /// 显示翻页模式选择对话框
+  /// 显示翻页模式选择底部面板
   void _showPageTurnModeDialog() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.black87,
+      isScrollControlled: true,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.black87,
-          title: const Text('翻页模式', style: TextStyle(color: Colors.white)),
-          content: Wrap(
-            spacing: 8,
-            children: PageTurnMode.values.map((mode) {
-              final isSelected = mode == _settings.pageTurnMode;
-              return GestureDetector(
-                onTap: () {
-                  _updateSettings(pageTurnModeIndex: mode.index);
-                  Navigator.pop(context);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected ? Colors.white24 : Colors.transparent,
-                    borderRadius: BorderRadius.circular(16),
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 标题行
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '翻页模式',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
                   ),
-                  child: Text(
-                    mode.displayName,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white70,
-                    ),
+                  const Divider(color: Colors.white24),
+                  const SizedBox(height: 16),
+                  // 翻页模式选项
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: PageTurnMode.values.map((mode) {
+                      final isSelected = mode == _settings.pageTurnMode;
+                      return GestureDetector(
+                        onTap: () {
+                          _updateSettings(pageTurnModeIndex: mode.index);
+                          setSheetState(() {});
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Theme.of(context).primaryColor
+                                : Colors.white24,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Theme.of(context).primaryColor
+                                  : Colors.white38,
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            mode.displayName,
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : Colors.white70,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   ),
-                ),
-              );
-            }).toList(),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消', style: TextStyle(color: Colors.white70)),
-            ),
-          ],
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -851,7 +983,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   Row(
                     children: [
                       const Expanded(
-                        child: Text('行间距', style: TextStyle(color: Colors.white70)),
+                        child: Text('行间距',
+                            style: TextStyle(color: Colors.white70)),
                       ),
                       Expanded(
                         child: Slider(
@@ -878,7 +1011,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   Row(
                     children: [
                       const Expanded(
-                        child: Text('段间距', style: TextStyle(color: Colors.white70)),
+                        child: Text('段间距',
+                            style: TextStyle(color: Colors.white70)),
                       ),
                       Expanded(
                         child: Slider(
@@ -887,7 +1021,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           max: 24,
                           divisions: 24,
                           label: _settings.paragraphSpacing.round().toString(),
-                          onChanged: (v) => _updateSettings(paragraphSpacing: v),
+                          onChanged: (v) =>
+                              _updateSettings(paragraphSpacing: v),
                         ),
                       ),
                       SizedBox(
@@ -905,7 +1040,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   Row(
                     children: [
                       const Expanded(
-                        child: Text('首行缩进', style: TextStyle(color: Colors.white70)),
+                        child: Text('首行缩进',
+                            style: TextStyle(color: Colors.white70)),
                       ),
                       Expanded(
                         child: Slider(
@@ -931,7 +1067,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   // 主题选择
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('阅读主题', style: TextStyle(color: Colors.white70)),
+                    child:
+                        Text('阅读主题', style: TextStyle(color: Colors.white70)),
                   ),
                   const SizedBox(height: 8),
                   SizedBox(
@@ -951,7 +1088,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               color: theme.backgroundColor,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: isSelected ? Colors.white : Colors.white24,
+                                color:
+                                    isSelected ? Colors.white : Colors.white24,
                                 width: isSelected ? 2 : 1,
                               ),
                             ),
@@ -1024,11 +1162,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     return Container(
       color: theme.backgroundColor,
-      padding: EdgeInsets.symmetric(
-        vertical: _settings.verticalPadding,
-        horizontal: _settings.horizontalPadding,
+      padding: EdgeInsets.only(
+        top: _settings.verticalPadding,
+        bottom: _settings.verticalPadding,
+        left: _settings.horizontalPadding,
+        right: _settings.horizontalPadding,
       ),
       child: SafeArea(
+        top: false, // 让内容延伸到状态栏区域
         child: SingleChildScrollView(
           controller: _getScrollController(index),
           child: Column(
@@ -1110,7 +1251,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
               onTap: () => Navigator.pop(context),
               onVerticalDragEnd: (details) {
                 // 下滑关闭
-                if (details.primaryVelocity != null && details.primaryVelocity! > 500) {
+                if (details.primaryVelocity != null &&
+                    details.primaryVelocity! > 500) {
                   Navigator.pop(context);
                 }
               },
@@ -1196,6 +1338,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final drawerBackgroundColor = _settings.theme.backgroundColor;
+            final isDark = _isDarkBackground(drawerBackgroundColor);
+
             return GestureDetector(
               onTap: () => Navigator.pop(context),
               child: Material(
@@ -1212,7 +1357,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         child: Container(
                           width: 320,
                           decoration: BoxDecoration(
-                            color: Theme.of(context).scaffoldBackgroundColor,
+                            color: drawerBackgroundColor,
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withOpacity(0.3),
@@ -1223,10 +1368,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           ),
                           child: Column(
                             children: [
-                              // 状态栏占位区域 - 使用主题背景色
+                              // 状态栏占位区域 - 使用阅读主题背景色延伸到状态栏
                               Container(
                                 height: statusBarHeight,
-                                color: Theme.of(context).primaryColor,
+                                color: drawerBackgroundColor,
                               ),
                               // 标题栏
                               Container(
@@ -1236,23 +1381,28 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                   bottom: 12,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Theme.of(context).primaryColor,
+                                  color: drawerBackgroundColor,
                                 ),
                                 child: Row(
                                   children: [
                                     Expanded(
                                       child: Text(
                                         widget.bookName,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                                          color: isDark
+                                              ? Colors.white
+                                              : Colors.black87,
                                         ),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.close, color: Colors.white),
+                                      icon: Icon(Icons.close,
+                                          color: isDark
+                                              ? Colors.white
+                                              : Colors.black87),
                                       onPressed: () => Navigator.pop(context),
                                     ),
                                   ],
@@ -1260,18 +1410,23 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               ),
                               // Tab切换栏
                               Container(
-                                color: Theme.of(context).primaryColor,
+                                color: drawerBackgroundColor,
                                 child: Row(
                                   children: [
                                     Expanded(
                                       child: TextButton(
-                                        onPressed: () => setDialogState(() => _drawerTabIndex = 0),
+                                        onPressed: () => setDialogState(
+                                            () => _drawerTabIndex = 0),
                                         child: Text(
                                           '章节',
                                           style: TextStyle(
                                             color: _drawerTabIndex == 0
-                                                ? Colors.white
-                                                : Colors.white70,
+                                                ? (isDark
+                                                    ? Colors.white
+                                                    : Colors.black87)
+                                                : (isDark
+                                                    ? Colors.white70
+                                                    : Colors.black54),
                                             fontWeight: _drawerTabIndex == 0
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -1281,13 +1436,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                     ),
                                     Expanded(
                                       child: TextButton(
-                                        onPressed: () => setDialogState(() => _drawerTabIndex = 1),
+                                        onPressed: () => setDialogState(
+                                            () => _drawerTabIndex = 1),
                                         child: Text(
                                           '书签',
                                           style: TextStyle(
                                             color: _drawerTabIndex == 1
-                                                ? Colors.white
-                                                : Colors.white70,
+                                                ? (isDark
+                                                    ? Colors.white
+                                                    : Colors.black87)
+                                                : (isDark
+                                                    ? Colors.white70
+                                                    : Colors.black54),
                                             fontWeight: _drawerTabIndex == 1
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -1305,9 +1465,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               Expanded(
                                 child: _drawerTabIndex == 0
                                     ? (_isSelectionMode
-                                        ? _buildSelectionChapterList(setDialogState)
+                                        ? _buildSelectionChapterList(
+                                            setDialogState)
                                         : _buildNormalChapterList())
-                                    : _buildBookmarkListInDrawer(setDialogState),
+                                    : _buildBookmarkListInDrawer(
+                                        setDialogState),
                               ),
                               // 底部操作栏（仅章节Tab的多选模式）
                               if (_drawerTabIndex == 0 && _isSelectionMode)
@@ -1354,7 +1516,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ? null
                   : () {
                       setDialogState(() {
-                        if (_selectedChapters.length == widget.chapters.length) {
+                        if (_selectedChapters.length ==
+                            widget.chapters.length) {
                           _selectedChapters.clear();
                         } else {
                           _selectedChapters.clear();
@@ -1365,7 +1528,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       });
                     },
               child: Text(
-                _selectedChapters.length == widget.chapters.length ? '取消全选' : '全选',
+                _selectedChapters.length == widget.chapters.length
+                    ? '取消全选'
+                    : '全选',
               ),
             ),
             TextButton(
@@ -1438,11 +1603,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
       itemCount: widget.chapters.length,
       itemBuilder: (context, index) {
         final isSelected = index == _currentIndex;
-        final downloadStatus = _chapterDownloadStatus[index] ??
-            DownloadStatus.notDownloaded;
+        final downloadStatus =
+            _chapterDownloadStatus[index] ?? DownloadStatus.notDownloaded;
 
         return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
           title: Row(
             children: [
               Expanded(
@@ -1481,11 +1647,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
       itemCount: widget.chapters.length,
       itemBuilder: (context, index) {
         final isSelected = _selectedChapters.contains(index);
-        final downloadStatus = _chapterDownloadStatus[index] ??
-            DownloadStatus.notDownloaded;
+        final downloadStatus =
+            _chapterDownloadStatus[index] ?? DownloadStatus.notDownloaded;
 
         return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
           leading: Checkbox(
             value: isSelected,
             onChanged: _isDownloading
@@ -1857,29 +2024,37 @@ class _ReaderScreenState extends State<ReaderScreen> {
             child: Text('翻页模式', style: TextStyle(color: Colors.white70)),
           ),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: PageTurnMode.values.map((mode) {
-              final isSelected = mode == _settings.pageTurnMode;
-              return GestureDetector(
-                onTap: () => _updateSettings(pageTurnModeIndex: mode.index),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? Theme.of(context).primaryColor
-                        : Colors.white24,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    mode.displayName,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white70,
+          StatefulBuilder(
+            builder: (context, setPageTurnState) {
+              return Wrap(
+                spacing: 8,
+                children: PageTurnMode.values.map((mode) {
+                  final isSelected = mode == _settings.pageTurnMode;
+                  return GestureDetector(
+                    onTap: () {
+                      _updateSettings(pageTurnModeIndex: mode.index);
+                      setPageTurnState(() {});
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Theme.of(context).primaryColor
+                            : Colors.white24,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        mode.displayName,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                }).toList(),
               );
-            }).toList(),
+            },
           ),
           // 主题选择
           const SizedBox(height: 16),
@@ -2048,7 +2223,5 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-
   /// 构建底部设置项
-  
 }
