@@ -27,8 +27,8 @@ class ChapterCacheService {
       await cacheDir.create(recursive: true);
     }
 
-    // 清理过期缓存
-    await _cleanExpiredCache();
+    // 延迟清理过期缓存，避免阻塞启动
+    Future.delayed(const Duration(seconds: 5), () => _cleanExpiredCache());
   }
 
   /// 生成缓存文件名（使用 URL 的 MD5 哈希）
@@ -93,13 +93,33 @@ class ChapterCacheService {
     }
   }
 
-  /// 检查缓存是否存在
+  /// 检查缓存是否存在（且未过期）
   Future<bool> hasCache(String url) async {
     if (_cachePath == null) await init();
 
     final filePath = _getCacheFilePath(url);
     final file = File(filePath);
-    return file.exists();
+
+    if (!await file.exists()) return false;
+
+    try {
+      final content = await file.readAsString();
+      final cacheData = jsonDecode(content) as Map<String, dynamic>;
+      final cachedAt = DateTime.parse(cacheData['cachedAt'] as String);
+
+      if (DateTime.now().difference(cachedAt) > _cacheExpiry) {
+        await file.delete();
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      // 无法解析的缓存文件，删除并返回 false
+      try {
+        await file.delete();
+      } catch (_) {}
+      return false;
+    }
   }
 
   /// 删除指定章节的缓存

@@ -6,6 +6,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' show parse;
 
 import '../models/book_source.dart';
+import 'rule_parser.dart';
 
 /// 流式搜索进度信息
 class SearchProgress {
@@ -123,20 +124,22 @@ class SearchService {
 
     // 分批并发搜索
     Future<void> processSource(BookSource source) async {
-      // 发送进度更新
-      controller.add(SearchProgress(
-        completed: completed,
-        total: total,
-        currentSourceName: source.bookSourceName,
-      ));
-
       try {
-        final results = await _searchInSource(keyword, source);
-        for (final result in results) {
-          controller.add(result);
+        // 发送进度更新
+        controller.add(SearchProgress(
+          completed: completed,
+          total: total,
+          currentSourceName: source.bookSourceName,
+        ));
+
+        try {
+          final results = await _searchInSource(keyword, source);
+          for (final result in results) {
+            controller.add(result);
+          }
+        } catch (e) {
+          print('搜索书源 ${source.bookSourceName} 失败: $e');
         }
-      } catch (e) {
-        print('搜索书源 ${source.bookSourceName} 失败: $e');
       } finally {
         completed++;
         activeCount[0]--;
@@ -151,17 +154,27 @@ class SearchService {
     // 限制并发的调度器
     int index = 0;
     void scheduleNext() {
-      while (index < validSources.length && activeCount[0] < _maxConcurrentSearches) {
-        activeCount[0]++;
-        final source = validSources[index++];
-        processSource(source).then((_) {
-          scheduleNext();
-        });
-      }
+      try {
+        while (index < validSources.length && activeCount[0] < _maxConcurrentSearches) {
+          activeCount[0]++;
+          final source = validSources[index++];
+          processSource(source).then((_) {
+            scheduleNext();
+          }).catchError((e) {
+            // 确保异常不会导致completed不递增卡 scheduleNext继续调度
+            scheduleNext();
+          });
+        }
 
-      // 所有任务完成
-      if (completed >= total && controller.isClosed == false) {
-        controller.close();
+        // 所有任务完成
+        if (completed >= total && !controller.isClosed) {
+          controller.close();
+        }
+      } catch (e) {
+        // scheduleNext 本身异常时也要检查是否需要关闭
+        if (completed >= total && !controller.isClosed) {
+          controller.close();
+        }
       }
     }
 
@@ -176,7 +189,7 @@ class SearchService {
     BookSource source,
   ) async {
     // 清理 baseUrl，移除 ## 或 # 后面的标记
-    final baseUrl = _cleanBaseUrl(source.bookSourceUrl);
+    final baseUrl = RuleParser.cleanBaseUrl(source.bookSourceUrl);
 
     // 构建搜索URL
     String url = source.searchUrl!;
@@ -195,7 +208,7 @@ class SearchService {
 
     // 如果是相对路径，与 baseUrl 拼接
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = _resolveUrl(url, baseUrl);
+      url = RuleParser.resolveUrl(url, baseUrl);
     }
 
     // 发送请求（使用搜索专用短超时）
@@ -205,7 +218,7 @@ class SearchService {
         headers: {
           'User-Agent':
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          if (source.header != null) ..._parseHeader(source.header!),
+          if (source.header != null) ...RuleParser.parseHeader(source.header!),
         },
       ),
     );
@@ -238,7 +251,7 @@ class SearchService {
 
       // 获取书籍列表
       final bookListPath = rule.bookList?.substring(1) ?? ''; // 移除开头的 $
-      final bookList = _getJsonValue(json, bookListPath) as List? ?? [];
+      final bookList = RuleParser.getJsonValue(json, bookListPath) as List? ?? [];
 
       for (final item in bookList) {
         try {
@@ -282,7 +295,7 @@ class SearchService {
     final results = <SearchResult>[];
 
     final bookListRule = rule.bookList ?? '.item';
-    final bookList = _getElements(document.documentElement!, bookListRule);
+    final bookList = RuleParser.getElements(document.documentElement!, bookListRule).cast<dom.Element>();
 
     print('📄 搜索解析: 规则="$bookListRule", 找到${bookList.length}个元素');
 
@@ -311,28 +324,6 @@ class SearchService {
     return results;
   }
 
-  /// 从 JSON 对象中获取值（支持 $.a.b.c 格式）
-  dynamic _getJsonValue(dynamic json, String path) {
-    if (path.isEmpty) return json;
-
-    final parts = path.split('.');
-    dynamic current = json;
-
-    for (final part in parts) {
-      if (part.isEmpty) continue;
-      if (current is Map) {
-        current = current[part];
-      } else if (current is List && int.tryParse(part) != null) {
-        final index = int.parse(part);
-        current = index < current.length ? current[index] : null;
-      } else {
-        return null;
-      }
-    }
-
-    return current;
-  }
-
   /// 从 JSON 对象提取文本
   String? _extractJsonText(dynamic json, String? rule) {
     if (rule == null || rule.isEmpty) return null;
@@ -342,13 +333,13 @@ class SearchService {
       if (rule.contains('{{')) {
         return rule.replaceAllMapped(
           RegExp(r'\{\{\$\.([^}]+)\}\}'),
-          (match) => _getJsonValue(json, match.group(1) ?? '')?.toString() ?? '',
+          (match) => RuleParser.getJsonValue(json, match.group(1) ?? '')?.toString() ?? '',
         );
       }
 
       // 处理 $.xxx 格式
       if (rule.startsWith('\$.')) {
-        final value = _getJsonValue(json, rule.substring(2));
+        final value = RuleParser.getJsonValue(json, rule.substring(2));
         return value?.toString();
       }
 
@@ -388,10 +379,10 @@ class SearchService {
       if (rule.contains('{{')) {
         url = rule.replaceAllMapped(
           RegExp(r'\{\{\$\.([^}]+)\}\}'),
-          (match) => _getJsonValue(json, match.group(1) ?? '')?.toString() ?? '',
+          (match) => RuleParser.getJsonValue(json, match.group(1) ?? '')?.toString() ?? '',
         );
       } else if (rule.startsWith('\$.')) {
-        url = _getJsonValue(json, rule.substring(2))?.toString();
+        url = RuleParser.getJsonValue(json, rule.substring(2))?.toString();
       } else if (rule.startsWith('http')) {
         url = rule;
       } else {
@@ -406,7 +397,7 @@ class SearchService {
       }
 
       // 否则与 baseUrl 拼接
-      return _resolveUrl(url, baseUrl);
+      return RuleParser.resolveUrl(url, baseUrl);
     } catch (e) {
       return null;
     }
@@ -415,7 +406,7 @@ class SearchService {
   /// 获取章节目录（支持分页）
   Future<List<Chapter>> getChapters(String bookUrl, BookSource source) async {
     // 清理 baseUrl
-    String baseUrl = _cleanBaseUrl(source.bookSourceUrl);
+    String baseUrl = RuleParser.cleanBaseUrl(source.bookSourceUrl);
 
     print('📖 获取章节目录: $bookUrl');
     print('📖 书源: ${source.bookSourceName}');
@@ -445,7 +436,7 @@ class SearchService {
             headers: {
               'User-Agent':
                   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              if (source.header != null) ..._parseHeader(source.header!),
+              if (source.header != null) ...RuleParser.parseHeader(source.header!),
             },
           ),
         );
@@ -502,7 +493,7 @@ class SearchService {
       // 默认获取所有链接
       chapterElements = document.querySelectorAll('a').toList();
     } else {
-      chapterElements = _getElements(document.documentElement!, chapterListRule);
+      chapterElements = RuleParser.getElements(document.documentElement!, chapterListRule).cast<dom.Element>();
     }
 
     print('📄 找到${chapterElements.length}个章节元素');
@@ -534,7 +525,7 @@ class SearchService {
       final chapters = <Chapter>[];
 
       final chapterListPath = rule.chapterList?.substring(1) ?? '';
-      final chapterList = _getJsonValue(json, chapterListPath) as List? ?? [];
+      final chapterList = RuleParser.getJsonValue(json, chapterListPath) as List? ?? [];
 
       for (final item in chapterList) {
         final name = _extractJsonText(item, rule.chapterName);
@@ -551,9 +542,9 @@ class SearchService {
         // 对于JSON，nextTocUrl可能是类似 $.nextUrl 的路径
         if (rule.nextTocUrl!.startsWith('\$')) {
           final nextPath = rule.nextTocUrl!.substring(1);
-          final nextValue = _getJsonValue(json, nextPath);
+          final nextValue = RuleParser.getJsonValue(json, nextPath);
           if (nextValue is String && nextValue.isNotEmpty) {
-            nextUrl = _resolveUrl(nextValue, baseUrl);
+            nextUrl = RuleParser.resolveUrl(nextValue, baseUrl);
           }
         }
       }
@@ -563,165 +554,6 @@ class SearchService {
       print('JSON章节解析失败: $e');
       return _TocParseResult(chapters: [], nextUrl: null);
     }
-  }
-
-  /// 获取元素列表（支持 Legado 规则格式）
-  List<dom.Element> _getElements(dom.Element root, String rule) {
-    if (rule.isEmpty) return [root];
-
-    final elements = <dom.Element>[];
-    String remainingRule = rule.trim();
-
-    // 处理 @CSS: 前缀
-    if (remainingRule.toLowerCase().startsWith('@css:')) {
-      remainingRule = remainingRule.substring(5).trim();
-      elements.addAll(root.querySelectorAll(remainingRule));
-      return elements;
-    }
-
-    // 按 @ 分割规则
-    final parts = remainingRule.split('@');
-    List<dom.Element> currentElements = [root];
-
-    for (final part in parts) {
-      final trimmedPart = part.trim();
-      if (trimmedPart.isEmpty) continue;
-
-      final nextElements = <dom.Element>[];
-      for (final element in currentElements) {
-        nextElements.addAll(_getElementsBySingleRule(element, trimmedPart));
-      }
-      currentElements = nextElements;
-
-      if (currentElements.isEmpty) break;
-    }
-
-    return currentElements;
-  }
-
-  /// 单个规则获取元素
-  List<dom.Element> _getElementsBySingleRule(dom.Element element, String rule) {
-    if (rule.isEmpty) return [element];
-
-    try {
-      // 处理 tag.xxx 格式 (如 tag.a, tag.div)
-      if (rule.startsWith('tag.')) {
-        final tagName = rule.substring(4);
-        return element.getElementsByTagName(tagName).toList();
-      }
-
-      // 处理 class.xxx 格式
-      if (rule.startsWith('class.')) {
-        final className = rule.substring(6);
-        return element.getElementsByClassName(className).toList();
-      }
-
-      // 处理 id.xxx 格式
-      if (rule.startsWith('id.')) {
-        final id = rule.substring(3);
-        final found = element.querySelector('#$id');
-        return found != null ? [found] : [];
-      }
-
-      // 处理 children 格式
-      if (rule == 'children') {
-        return element.children.toList();
-      }
-
-      // 处理带索引的选择器 (如 .class.0 或 .class!0)
-      // 支持格式: .className.0, .className!0, selector.0, selector!0
-      final indexPattern = RegExp(r'^(.+?)([.!])(-?\d+)$');
-      final indexMatch = indexPattern.firstMatch(rule);
-      if (indexMatch != null) {
-        final selector = indexMatch.group(1)!;
-        final splitChar = indexMatch.group(2)!;
-        final indexStr = indexMatch.group(3)!;
-        final index = int.parse(indexStr);
-
-        final elements = _getElementsBySingleRule(element, selector);
-
-        if (splitChar == '.') {
-          // 选择模式: 获取第 index 个元素
-          if (index >= 0 && index < elements.length) {
-            return [elements[index]];
-          } else if (index < 0 && elements.length + index >= 0) {
-            return [elements[elements.length + index]];
-          }
-        } else {
-          // 排除模式 (!): 排除第 index 个元素
-          if (index >= 0 && index < elements.length) {
-            elements.removeAt(index);
-          } else if (index < 0 && elements.length + index >= 0) {
-            elements.removeAt(elements.length + index);
-          }
-          return elements;
-        }
-        return [];
-      }
-
-      // 处理 [index] 或 [start:end] 或 [start:end:step] 格式
-      final bracketMatch = RegExp(r'^(.+?)\[([^\]]+)\]$').firstMatch(rule);
-      if (bracketMatch != null) {
-        final selector = bracketMatch.group(1)!;
-        final indexExpr = bracketMatch.group(2)!;
-        final elements = _getElementsBySingleRule(element, selector);
-
-        return _selectElementsByIndex(elements, indexExpr);
-      }
-
-      // 默认使用 CSS 选择器
-      return element.querySelectorAll(rule).toList();
-    } catch (e) {
-      // CSS 选择器或其他错误
-      return [];
-    }
-  }
-
-  /// 根据索引表达式选择元素
-  List<dom.Element> _selectElementsByIndex(List<dom.Element> elements, String indexExpr) {
-    if (elements.isEmpty) return [];
-
-    // 单个索引
-    final singleIndex = int.tryParse(indexExpr);
-    if (singleIndex != null) {
-      final idx = singleIndex >= 0 ? singleIndex : elements.length + singleIndex;
-      if (idx >= 0 && idx < elements.length) {
-        return [elements[idx]];
-      }
-      return [];
-    }
-
-    // 区间 [start:end] 或 [start:end:step]
-    final rangeMatch = RegExp(r'^(-?\d*):(-?\d*)(?::(-?\d*))?$').firstMatch(indexExpr);
-    if (rangeMatch != null) {
-      int? start = rangeMatch.group(1)!.isNotEmpty ? int.parse(rangeMatch.group(1)!) : null;
-      int? end = rangeMatch.group(2)!.isNotEmpty ? int.parse(rangeMatch.group(2)!) : null;
-      int step = rangeMatch.group(3) != null && rangeMatch.group(3)!.isNotEmpty
-          ? int.parse(rangeMatch.group(3)!)
-          : 1;
-
-      // 转换负索引
-      start = start != null ? (start >= 0 ? start : elements.length + start) : 0;
-      end = end != null ? (end >= 0 ? end : elements.length + end) : elements.length - 1;
-
-      // 边界检查
-      start = start.clamp(0, elements.length - 1);
-      end = end.clamp(0, elements.length - 1);
-
-      final result = <dom.Element>[];
-      if (step > 0 && start <= end) {
-        for (int i = start; i <= end; i += step) {
-          if (i < elements.length) result.add(elements[i]);
-        }
-      } else if (step < 0 && start >= end) {
-        for (int i = start; i >= end; i += step) {
-          if (i >= 0 && i < elements.length) result.add(elements[i]);
-        }
-      }
-      return result;
-    }
-
-    return elements;
   }
 
   /// 新版文本提取（支持更多规则格式）
@@ -786,10 +618,12 @@ class SearchService {
         }
 
         // 使用元素获取规则
-        final foundElements = _getElementsBySingleRule(current, trimmedPart);
+        final foundElements = RuleParser.getElementsBySingleRule(current, trimmedPart);
         if (foundElements.isNotEmpty) {
-          current = foundElements.first;
-          result = current.text.trim();
+          current = foundElements.first as dom.Element?;
+          if (current != null) {
+            result = current.text.trim();
+          }
         } else {
           // 可能是属性名
           final attrValue = current.attributes[trimmedPart];
@@ -830,7 +664,7 @@ class SearchService {
     if (rule == null || rule.isEmpty) {
       final href = element.attributes['href'];
       if (href != null) {
-        return _resolveUrl(href, baseUrl);
+        return RuleParser.resolveUrl(href, baseUrl);
       }
       return null;
     }
@@ -886,11 +720,11 @@ class SearchService {
         }
 
         // 使用元素获取规则
-        final foundElements = _getElementsBySingleRule(current, trimmedPart);
+        final foundElements = RuleParser.getElementsBySingleRule(current, trimmedPart);
         if (foundElements.isNotEmpty) {
-          current = foundElements.first;
+          current = foundElements.first as dom.Element?;
           // 尝试获取 href
-          final href = current.attributes['href'];
+          final href = current?.attributes['href'];
           if (href != null) {
             result = href;
             break;
@@ -924,7 +758,7 @@ class SearchService {
 
       // 解析为完整URL
       if (result != null && result.isNotEmpty) {
-        return _resolveUrl(result, baseUrl);
+        return RuleParser.resolveUrl(result, baseUrl);
       }
 
       return null;
@@ -939,7 +773,7 @@ class SearchService {
     BookSource source,
   ) async {
     // 清理 baseUrl
-    String baseUrl = _cleanBaseUrl(source.bookSourceUrl);
+    String baseUrl = RuleParser.cleanBaseUrl(source.bookSourceUrl);
 
     print('📖 获取章节内容: $chapterUrl');
     print('📖 书源: ${source.bookSourceName}');
@@ -947,7 +781,7 @@ class SearchService {
     // 检查章节 URL 是否需要拼接
     String fullUrl = chapterUrl;
     if (!chapterUrl.startsWith('http://') && !chapterUrl.startsWith('https://')) {
-      fullUrl = _resolveUrl(chapterUrl, baseUrl);
+      fullUrl = RuleParser.resolveUrl(chapterUrl, baseUrl);
       print('📖 拼接URL: $chapterUrl -> $fullUrl');
     }
 
@@ -958,7 +792,7 @@ class SearchService {
         headers: {
           'User-Agent':
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          if (source.header != null) ..._parseHeader(source.header!),
+          if (source.header != null) ...RuleParser.parseHeader(source.header!),
         },
       ),
     );
@@ -1051,7 +885,7 @@ class SearchService {
     } else if (contentRule != null && contentRule.isNotEmpty) {
       print('📄 内容规则: "$contentRule"');
       try {
-        final elements = _getElements(document.documentElement!, contentRule);
+        final elements = RuleParser.getElements(document.documentElement!, contentRule).cast<dom.Element>();
         print('📄 找到 ${elements.length} 个内容元素');
         // 提取HTML内容以保留图片标签
         content = _extractContentWithImages(elements, baseUrl);
@@ -1126,7 +960,7 @@ class SearchService {
         // 处理图片标签
         final src = node.attributes['src'] ?? node.attributes['data-src'];
         if (src != null && src.isNotEmpty) {
-          final fullUrl = _resolveUrl(src, baseUrl);
+          final fullUrl = RuleParser.resolveUrl(src, baseUrl);
           buffer.write('\n<img src="$fullUrl"/>\n');
         }
       } else if (node.localName == 'br') {
@@ -1226,75 +1060,5 @@ class SearchService {
     }
 
     return '';
-  }
-
-  /// 清理 baseUrl，移除 ## 或 # 后面的标记
-  String _cleanBaseUrl(String url) {
-    if (url.contains('##')) {
-      return url.split('##')[0];
-    } else if (url.contains('#')) {
-      return url.split('#')[0];
-    }
-    return url;
-  }
-
-  /// 解析相对URL
-  String _resolveUrl(String url, String baseUrl) {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
-    }
-
-    final base = Uri.parse(baseUrl);
-    if (url.startsWith('//')) {
-      return '${base.scheme}:$url';
-    } else if (url.startsWith('/')) {
-      return '${base.scheme}://${base.host}$url';
-    } else {
-      final path = base.path.endsWith('/')
-          ? base.path
-          : base.path.substring(0, base.path.lastIndexOf('/') + 1);
-      return '${base.scheme}://${base.host}$path$url';
-    }
-  }
-
-  /// 解析header
-  Map<String, String> _parseHeader(String header) {
-    final map = <String, String>{};
-    final trimmed = header.trim();
-
-    // 尝试解析为 JSON 格式 {"key": "value"}
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-      try {
-        // 简单的 JSON 解析，不依赖 dart:convert
-        final content = trimmed
-            .substring(1, trimmed.length - 1)
-            .replaceAllMapped(
-              RegExp(r'"([^"]+)"\s*:\s*"([^"]*)"'),
-              (match) => '${match.group(1)}:${match.group(2)}',
-            );
-        for (final pair in content.split(',')) {
-          final kv = pair.split(':');
-          if (kv.length >= 2) {
-            final key = kv[0].trim().replaceAll('"', '');
-            final value = kv.sublist(1).join(':').trim().replaceAll('"', '');
-            if (key.isNotEmpty) {
-              map[key] = value;
-            }
-          }
-        }
-        return map;
-      } catch (e) {
-        // JSON 解析失败，尝试行格式
-      }
-    }
-
-    // 行格式: Key: Value
-    for (final line in header.split('\n')) {
-      final parts = line.split(':');
-      if (parts.length >= 2) {
-        map[parts[0].trim()] = parts.sublist(1).join(':').trim();
-      }
-    }
-    return map;
   }
 }

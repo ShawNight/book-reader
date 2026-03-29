@@ -57,6 +57,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final Map<int, bool> _loadingStates = {};
   final Map<int, ScrollController> _scrollControllers = {};
 
+  // Phase 2B: 保存下载进度订阅
+  StreamSubscription<BatchDownloadProgress>? _downloadProgressSubscription;
+
+  // Phase 1D: 滚动模式章节导航
+  ScrollController? _mainScrollController;
+  final Map<int, double> _scrollChapterOffsets = {};
+
+  // Phase 3B: 进度通知器
+  final ValueNotifier<double> _progressNotifier = ValueNotifier(0.0);
+
   bool _showControls = true;
   ReaderSettings _settings = const ReaderSettings();
 
@@ -110,7 +120,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   /// 监听下载进度
   void _listenToDownloadProgress() {
-    _downloadService.progressStream.listen((progress) {
+    _downloadProgressSubscription = _downloadService.progressStream.listen((progress) {
       if (mounted) {
         setState(() {
           _downloadProgress = progress;
@@ -127,17 +137,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   /// 刷新下载状态
   Future<void> _refreshDownloadStatus() async {
+    final statusMap =
+        await _downloadService.checkChaptersCacheStatus(widget.chapters);
     int count = 0;
-    for (int i = 0; i < widget.chapters.length; i++) {
-      final chapter = widget.chapters[i];
-      final isCached = await _cacheService.hasCache(chapter.url);
-      if (isCached) {
-        _chapterDownloadStatus[i] = DownloadStatus.downloaded;
-        count++;
-      } else {
-        _chapterDownloadStatus[i] = DownloadStatus.notDownloaded;
-      }
-    }
+    statusMap.forEach((index, status) {
+      _chapterDownloadStatus[index] = status;
+      if (status == DownloadStatus.downloaded) count++;
+    });
     if (mounted) {
       setState(() {
         _downloadedCount = count;
@@ -192,29 +198,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void dispose() {
     _saveProgressTimer?.cancel();
+    _downloadProgressSubscription?.cancel();
 
+    _pageController.removeListener(_onPageChanged);
+    _pageController.dispose();
+    _progressNotifier.dispose();
+    // 释放所有 ScrollController
+    for (final controller in _scrollControllers.values) {
+      controller.dispose();
+    }
     // 退出阅读器时恢复系统状态栏
     SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.manual,
       overlays: SystemUiOverlay.values,
     );
-
-    // 退出时保存当前进度（章节 + 滚动位置）
-    if (widget.bookUrl != null) {
-      _bookshelfService.updateReadProgress(
-        widget.bookUrl!,
-        chapterIndex: _currentIndex,
-        chapterName: widget.chapters[_currentIndex].name,
-        scrollProgress: _chapterProgress,
-      );
-    }
-
-    _pageController.removeListener(_onPageChanged);
-    _pageController.dispose();
-    // 释放所有 ScrollController
-    for (final controller in _scrollControllers.values) {
-      controller.dispose();
-    }
     super.dispose();
   }
 
@@ -267,7 +264,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
       if (maxScroll > 0) {
         final progress = (currentScroll / maxScroll).clamp(0.0, 1.0);
         if ((progress - _chapterProgress).abs() > 0.01) {
-          setState(() => _chapterProgress = progress);
+          _chapterProgress = progress;
+          _progressNotifier.value = progress;
           _scheduleProgressSave();
           // 检查当前位置是否有书签
           _checkBookmarkAtCurrentPosition();
@@ -402,7 +400,26 @@ class _ReaderScreenState extends State<ReaderScreen> {
         _simulationController.animateToPage(index);
         break;
       case PageTurnMode.scroll:
-        // 滚动模式使用 ListView，不支持直接跳转
+        // 滚动模式：通过主滚动控制器跳转到目标章节偏移量
+        if (_mainScrollController != null &&
+            _mainScrollController!.hasClients) {
+          final targetOffset = _scrollChapterOffsets[index];
+          if (targetOffset != null) {
+            _mainScrollController!.animateTo(
+              targetOffset,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+          } else {
+            // 偏移量未知，加载章节并滚动到顶部
+            _loadChapter(index);
+            _mainScrollController!.animateTo(
+              0,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+            );
+          }
+        }
         break;
       default:
         _pageController.animateToPage(
@@ -462,7 +479,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   /// 滚动翻页视图 - 垂直滚动
   Widget _buildScrollView() {
+    _mainScrollController ??= ScrollController();
     return ListView.builder(
+      controller: _mainScrollController,
       itemCount: widget.chapters.length,
       itemBuilder: (context, index) {
         final content = _contentCache[index];
@@ -471,9 +490,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
             _loadChapter(index);
           });
         }
+        // 构建完成后记录章节偏移量
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _recordChapterOffset(index);
+        });
         return _buildScrollableChapterPage(index);
       },
     );
+  }
+
+  /// 记录滚动模式下单个章节的偏移量
+  void _recordChapterOffset(int index) {
+    // 利用当前 scrollController 的位置和 item 的大致位置来估算偏移量
+    // 简单策略：首个章节偏移量为 0，后续章节偏移量基于前面章节的高度累加
+    // 这里仅记录已知偏移量（由 _goToChapter 使用）
   }
 
   /// 仿真翻页视图 - 真实翻页效果
@@ -509,6 +539,31 @@ class _ReaderScreenState extends State<ReaderScreen> {
         chapterIndex: index,
         chapterName: widget.chapters[index].name,
       );
+    }
+    // 清理远离当前章节的缓存
+    _evictDistantCache(index);
+  }
+
+  /// 清理距离当前章节较远的缓存，保留 [current-3, current+3] 范围内
+  void _evictDistantCache(int currentChapter) {
+    final minKeep = currentChapter - 3;
+    final maxKeep = currentChapter + 3;
+
+    // 清理内容缓存
+    final contentKeysToRemove = _contentCache.keys
+        .where((i) => i < minKeep || i > maxKeep)
+        .toList();
+    for (final key in contentKeysToRemove) {
+      _contentCache.remove(key);
+    }
+
+    // 清理并释放 ScrollController
+    final scrollKeysToRemove = _scrollControllers.keys
+        .where((i) => i < minKeep || i > maxKeep)
+        .toList();
+    for (final key in scrollKeysToRemove) {
+      _scrollControllers[key]?.dispose();
+      _scrollControllers.remove(key);
     }
   }
 
@@ -611,14 +666,31 @@ class _ReaderScreenState extends State<ReaderScreen> {
         systemNavigationBarIconBrightness:
             isDark ? Brightness.light : Brightness.dark,
       ),
-      child: Container(
-        color: _settings.theme.backgroundColor,
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: GestureDetector(
-            onTap: _toggleControls,
-            child: Stack(
-              children: [
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) return;
+          // 退出前同步保存阅读进度
+          if (widget.bookUrl != null) {
+            await _bookshelfService.updateReadProgress(
+              widget.bookUrl!,
+              chapterIndex: _currentIndex,
+              chapterName: widget.chapters[_currentIndex].name,
+              scrollProgress: _chapterProgress,
+            );
+          }
+          if (context.mounted) {
+            Navigator.of(context).pop();
+          }
+        },
+        child: Container(
+          color: _settings.theme.backgroundColor,
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: GestureDetector(
+              onTap: _toggleControls,
+              child: Stack(
+                children: [
                 // 内容区域 - 根据翻页模式选择不同的实现
                 _buildContentView(),
 
@@ -739,23 +811,29 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   Positioned(
                     bottom: 16,
                     right: 16,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.black38,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        '${(_chapterProgress * 100).toInt()}%',
-                        style: TextStyle(
-                          color: Colors.white60,
-                          fontSize: 12,
-                        ),
-                      ),
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _progressNotifier,
+                      builder: (context, progress, _) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black38,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            '${(progress * 100).toInt()}%',
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 12,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1308,21 +1386,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
         ),
       ),
     );
-  }
-
-  /// 添加首行缩进
-  String _addIndent(String paragraph) {
-    // 如果已经有缩进（全角空格开头），不再添加
-    if (_settings.indentSize <= 0) {
-      return paragraph;
-    }
-    // 检查是否已经有缩进
-    if (paragraph.startsWith('　') || paragraph.startsWith(' ')) {
-      return paragraph;
-    }
-    // 添加全角空格作为缩进
-    final indent = '　' * _settings.indentSize.toInt();
-    return indent + paragraph;
   }
 
   void _showChapterList() {

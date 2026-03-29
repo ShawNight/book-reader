@@ -12,12 +12,16 @@ class AppSettingsService {
   ThemeMode _themeMode = ThemeMode.system;
   ThemeMode get themeMode => _themeMode;
 
+  /// 主题模式变更通知器
+  final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier(ThemeMode.system);
+
   /// 初始化服务
   Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final themeModeIndex = prefs.getInt(_themeModeKey) ?? 0;
       _themeMode = ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)];
+      themeModeNotifier.value = _themeMode;
     } catch (e) {
       print('加载 App 设置失败: $e');
     }
@@ -26,6 +30,7 @@ class AppSettingsService {
   /// 设置主题模式
   Future<void> setThemeMode(ThemeMode mode) async {
     _themeMode = mode;
+    themeModeNotifier.value = mode;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_themeModeKey, mode.index);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
 
@@ -634,16 +636,19 @@ class _BookshelfPageState extends State<_BookshelfPage> {
     // 显示加载指示器
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (context) => const Center(
         child: CircularProgressIndicator(),
       ),
     );
 
     try {
-      // 加载章节列表
+      // 加载章节列表（15秒超时）
       final searchService = SearchService();
-      final chapters = await searchService.getChapters(book.bookUrl, source);
+      final chapters = await Future.any([
+        searchService.getChapters(book.bookUrl, source),
+        Future.delayed(const Duration(seconds: 15)).then((_) => throw TimeoutException('加载超时')),
+      ]);
 
       if (!mounted) return;
 
