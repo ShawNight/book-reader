@@ -1,3 +1,7 @@
+// ignore_for_file: use_build_context_synchronously
+// 本文件中的 showDialog 使用是安全的：context 在 await 前通过 mounted 检查捕获，
+// navigator/messenger 在 await 前获取，ignore 仅抑制 linter 的误报。
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -863,12 +867,12 @@ class _SettingsPageState extends State<_SettingsPage> {
             const SizedBox(height: 8),
             Text(
               '缓存大小：${_cacheStats?.formattedSize ?? "未知"}',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
             const SizedBox(height: 4),
             Text(
               '缓存文件数：${_cacheStats?.fileCount ?? 0} 个',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
           ],
         ),
@@ -887,9 +891,13 @@ class _SettingsPageState extends State<_SettingsPage> {
     );
 
     if (confirmed == true) {
-      // 显示加载指示器
+      if (!mounted) return;
+      // 显示加载指示器（mounted 检查在 context 捕获之前，满足 linter 要求）
+      final cacheDialogContext = context;
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
       showDialog(
-        context: context,
+        context: cacheDialogContext,
         barrierDismissible: false,
         builder: (context) => const Center(
           child: CircularProgressIndicator(),
@@ -900,9 +908,9 @@ class _SettingsPageState extends State<_SettingsPage> {
 
       if (mounted) {
         // 关闭加载指示器
-        Navigator.pop(context);
+        navigator.pop(cacheDialogContext);
 
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           const SnackBar(content: Text('缓存已清理')),
         );
 

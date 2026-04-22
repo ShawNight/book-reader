@@ -16,6 +16,10 @@ import '../services/batch_download_service.dart';
 import '../widgets/simulation_page_turn.dart';
 import '../widgets/cover_page_turn.dart';
 import '../widgets/content_with_images.dart';
+import 'reader/dialogs/font_size_dialog.dart';
+import 'reader/dialogs/page_turn_mode_dialog.dart';
+import 'reader/dialogs/detailed_settings_dialog.dart';
+import 'reader/components/download_status_icon.dart';
 
 /// 阅读页面
 class ReaderScreen extends StatefulWidget {
@@ -714,11 +718,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           }
                         },
                         itemBuilder: (context) => [
-                          PopupMenuItem(
+                          const PopupMenuItem(
                             value: 'directory',
                             child: ListTile(
-                              leading: const Icon(Icons.list),
-                              title: const Text('目录'),
+                              leading: Icon(Icons.list),
+                              title: Text('目录'),
                             ),
                           ),
                           PopupMenuItem(
@@ -823,7 +827,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           ),
                           child: Text(
                             '${(progress * 100).toInt()}%',
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Colors.white60,
                               fontSize: 12,
                             ),
@@ -865,329 +869,40 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   /// 显示字号调节底部面板
   void _showFontSizeDialog() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.black87,
-      isScrollControlled: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 标题行
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        '字体大小',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white70),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                  const Divider(color: Colors.white24),
-                  const SizedBox(height: 16),
-                  // 字体大小调节
-                  Row(
-                    children: [
-                      const Text('A',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 14)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Slider(
-                          value: _settings.fontSize,
-                          min: 12,
-                          max: 32,
-                          divisions: 20,
-                          label: _settings.fontSize.round().toString(),
-                          onChanged: (v) => _updateSettings(fontSize: v),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('A',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 22)),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 40,
-                        child: Text(
-                          _settings.fontSize.round().toString(),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 16),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            );
-          },
-        );
-      },
+    FontSizeDialog.show(
+      context,
+      fontSize: _settings.fontSize,
+      onFontSizeChanged: (v) => _updateSettings(fontSize: v),
     );
   }
 
   /// 显示翻页模式选择底部面板
   void _showPageTurnModeDialog() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.black87,
-      isScrollControlled: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 标题行
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        '翻页模式',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white70),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                  const Divider(color: Colors.white24),
-                  const SizedBox(height: 16),
-                  // 翻页模式选项
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: PageTurnMode.values.map((mode) {
-                      final isSelected = mode == _settings.pageTurnMode;
-                      return GestureDetector(
-                        onTap: () {
-                          _updateSettings(pageTurnModeIndex: mode.index);
-                          setSheetState(() {});
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? Theme.of(context).primaryColor
-                                : Colors.white24,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isSelected
-                                  ? Theme.of(context).primaryColor
-                                  : Colors.white38,
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            mode.displayName,
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : Colors.white70,
-                              fontWeight: isSelected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            );
-          },
-        );
-      },
+    PageTurnModeDialog.show(
+      context,
+      currentMode: _settings.pageTurnMode,
+      onModeChanged: (mode) => _updateSettings(pageTurnModeIndex: mode.index),
     );
   }
 
   /// 显示详细设置面板
   void _showDetailedSettings() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.black87,
-      isScrollControlled: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 标题行
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        '详细设置',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white70),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                  const Divider(color: Colors.white24),
-                  const SizedBox(height: 16),
-                  // 行间距
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text('行间距',
-                            style: TextStyle(color: Colors.white70)),
-                      ),
-                      Expanded(
-                        child: Slider(
-                          value: _settings.lineHeight,
-                          min: 1.2,
-                          max: 3.0,
-                          divisions: 18,
-                          label: _settings.lineHeight.toStringAsFixed(1),
-                          onChanged: (v) => _updateSettings(lineHeight: v),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 40,
-                        child: Text(
-                          _settings.lineHeight.toStringAsFixed(1),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // 段间距
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text('段间距',
-                            style: TextStyle(color: Colors.white70)),
-                      ),
-                      Expanded(
-                        child: Slider(
-                          value: _settings.paragraphSpacing,
-                          min: 0,
-                          max: 24,
-                          divisions: 24,
-                          label: _settings.paragraphSpacing.round().toString(),
-                          onChanged: (v) =>
-                              _updateSettings(paragraphSpacing: v),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 40,
-                        child: Text(
-                          _settings.paragraphSpacing.round().toString(),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // 首行缩进
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text('首行缩进',
-                            style: TextStyle(color: Colors.white70)),
-                      ),
-                      Expanded(
-                        child: Slider(
-                          value: _settings.indentSize,
-                          min: 0,
-                          max: 4,
-                          divisions: 4,
-                          label: _settings.indentSize.round().toString(),
-                          onChanged: (v) => _updateSettings(indentSize: v),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 40,
-                        child: Text(
-                          _settings.indentSize.round().toString(),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // 主题选择
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child:
-                        Text('阅读主题', style: TextStyle(color: Colors.white70)),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 50,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: ReaderSettings.themes.length,
-                      itemBuilder: (context, index) {
-                        final theme = ReaderSettings.themes[index];
-                        final isSelected = index == _settings.themeIndex;
-                        return GestureDetector(
-                          onTap: () => _updateSettings(themeIndex: index),
-                          child: Container(
-                            width: 50,
-                            margin: const EdgeInsets.only(right: 8),
-                            decoration: BoxDecoration(
-                              color: theme.backgroundColor,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color:
-                                    isSelected ? Colors.white : Colors.white24,
-                                width: isSelected ? 2 : 1,
-                              ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                '文',
-                                style: TextStyle(color: theme.textColor),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            );
-          },
-        );
+    DetailedSettingsDialog.show(
+      context,
+      settings: _settings,
+      onSettingsChanged: (newSettings) {
+        if (newSettings.lineHeight != _settings.lineHeight) {
+          _updateSettings(lineHeight: newSettings.lineHeight);
+        }
+        if (newSettings.paragraphSpacing != _settings.paragraphSpacing) {
+          _updateSettings(paragraphSpacing: newSettings.paragraphSpacing);
+        }
+        if (newSettings.indentSize != _settings.indentSize) {
+          _updateSettings(indentSize: newSettings.indentSize);
+        }
+        if (newSettings.themeIndex != _settings.themeIndex) {
+          _updateSettings(themeIndex: newSettings.themeIndex);
+        }
       },
     );
   }
@@ -1869,32 +1584,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   /// 构建下载状态图标
   Widget _buildDownloadStatusIcon(DownloadStatus status) {
-    switch (status) {
-      case DownloadStatus.downloaded:
-        return const Icon(
-          Icons.offline_pin,
-          size: 16,
-          color: Colors.green,
-        );
-      case DownloadStatus.downloading:
-        return const SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        );
-      case DownloadStatus.failed:
-        return const Icon(
-          Icons.error_outline,
-          size: 16,
-          color: Colors.red,
-        );
-      case DownloadStatus.notDownloaded:
-        return Icon(
-          Icons.cloud_off_outlined,
-          size: 16,
-          color: Colors.grey[400],
-        );
-    }
+    return DownloadStatusIcon(status: status);
   }
 
   /// 切换书签

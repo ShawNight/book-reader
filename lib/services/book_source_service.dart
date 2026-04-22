@@ -31,7 +31,7 @@ class BookSourceService {
       return [BookSource.fromJson(data as Map<String, dynamic>)];
     }
 
-    throw FormatException('无法解析书源 JSON 格式');
+    throw const FormatException('无法解析书源 JSON 格式');
   }
 
   /// 获取应用文档目录

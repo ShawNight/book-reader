@@ -377,7 +377,7 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
         ),
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: AppSpacing.sm + 1,
             color: AppColors.greyDark,
           ),
@@ -441,7 +441,7 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
             const SizedBox(height: 16),
             Text(
               _filterType == PurifyFilterType.all ? '暂无书源' : '没有符合条件的结果',
-              style: TextStyle(color: AppColors.textSecondary),
+              style: const TextStyle(color: AppColors.textSecondary),
             ),
           ],
         ),
@@ -491,14 +491,14 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
                 const SizedBox(width: 8),
                 Text(
                   '耗时: ${result.responseTime!.inMilliseconds}ms',
-                  style: TextStyle(fontSize: 11, color: AppColors.greyDark),
+                  style: const TextStyle(fontSize: 11, color: AppColors.greyDark),
                 ),
               ],
               if (result.resultCount != null && result.isValid) ...[
                 const SizedBox(width: 8),
                 Text(
                   '结果: ${result.resultCount}条',
-                  style: TextStyle(fontSize: 11, color: AppColors.greyDark),
+                  style: const TextStyle(fontSize: 11, color: AppColors.greyDark),
                 ),
               ],
             ],
@@ -507,7 +507,7 @@ class _SourcePurifyScreenState extends State<SourcePurifyScreen> {
             const SizedBox(height: 2),
             Text(
               '错误: ${result.errorMessage}',
-              style: TextStyle(fontSize: 11, color: AppColors.error),
+              style: const TextStyle(fontSize: 11, color: AppColors.error),
             ),
           ],
         ],

@@ -81,7 +81,14 @@ lib/
     ├── search_screen.dart       # Multi-source search with streaming results
     ├── chapter_list_screen.dart # Chapter list with search, sort, group
     ├── reader_screen.dart       # PageView-based reader with full features
-    └── source_purify_screen.dart     # Source testing and purification
+    ├── source_purify_screen.dart     # Source testing and purification
+    └── reader/                      # Reader-related components (refactored 2026-04-18)
+        ├── dialogs/                    # Reusable dialog components
+        │   ├── font_size_dialog.dart
+        │   ├── page_turn_mode_dialog.dart
+        │   └── detailed_settings_dialog.dart
+        └── components/                 # Reusable UI components
+            └── download_status_icon.dart
 ```
 
 ### Key Architectural Patterns
@@ -310,6 +317,35 @@ Key dependencies in `pubspec.yaml`:
 
 2. **Some book sources may fail**: Due to rule incompatibility or website changes
 3. **Reading Statistics**: Total time, word count not tracked
+
+## ReaderScreen Refactoring (2026-04-18)
+
+### Overview
+ReaderScreen was refactored to reduce code complexity and improve maintainability by extracting dialog components.
+
+### Before/After
+| Metric | Before | After | Change |
+|--------|--------|-------|--------|
+| reader_screen.dart | 2326 lines | 1980 lines | -346 lines (-14.9%) |
+
+### Extracted Components
+
+**Dialog Components** (`lib/screens/reader/dialogs/`):
+- `font_size_dialog.dart` (93 lines) - Font size adjustment bottom sheet
+- `page_turn_mode_dialog.dart` (103 lines) - Page turn mode selection
+- `detailed_settings_dialog.dart` (203 lines) - Detailed settings (line height, paragraph spacing, indent, theme)
+
+**UI Components** (`lib/screens/reader/components/`):
+- `download_status_icon.dart` (41 lines) - Download status icon widget
+
+### Key Changes
+1. Replaced inline `showModalBottomSheet` + `StatefulBuilder` with dedicated StatelessWidget dialogs
+2. Dialogs use `show()` static method pattern for easy invocation
+3. All components pass `flutter analyze` with 0 errors
+
+### Project Paths
+- Original path: `/home/shawnight/项目工作/book-reader` (Chinese characters)
+- Workaround symlink: `ln -sf "/home/shawnight/项目工作/book-reader" /tmp/book-reader`
 
 ## Notes
 

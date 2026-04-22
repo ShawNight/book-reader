@@ -6,6 +6,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' show parse;
 
 import '../models/book_source.dart';
+import '../utils/url_builder.dart';
 import 'rule_parser.dart';
 
 /// 流式搜索进度信息
@@ -85,6 +86,12 @@ class SearchService {
   /// 最大并发搜索数
   static const int _maxConcurrentSearches = 5;
 
+  /// 释放资源（当服务不再需要时调用）
+  void dispose() {
+    _searchDio.close();
+    _contentDio.close();
+  }
+
   /// 搜索小说
   Future<List<SearchResult>> search(
     String keyword,
@@ -120,21 +127,36 @@ class SearchService {
 
     final total = validSources.length;
     var completed = 0;
+    var cancelled = false; // 追踪取消状态
     final activeCount = <int>[0]; // 使用列表来允许可变引用
 
-    // 分批并发搜索
+    // 确保 controller 正确关闭的辅助方法
+    void closeControllerIfNeeded() {
+      if (!cancelled && completed >= total && !controller.isClosed) {
+        controller.close();
+      } else if (cancelled && !controller.isClosed) {
+        controller.close();
+      }
+    }
+
+    // 分批并发搜索（使用 Future.doWhile 实现）
     Future<void> processSource(BookSource source) async {
+      if (cancelled) return; // 如果已取消，直接返回
+
       try {
         // 发送进度更新
-        controller.add(SearchProgress(
-          completed: completed,
-          total: total,
-          currentSourceName: source.bookSourceName,
-        ));
+        if (!controller.isClosed) {
+          controller.add(SearchProgress(
+            completed: completed,
+            total: total,
+            currentSourceName: source.bookSourceName,
+          ));
+        }
 
         try {
           final results = await _searchInSource(keyword, source);
           for (final result in results) {
+            if (cancelled || controller.isClosed) break;
             controller.add(result);
           }
         } catch (e) {
@@ -144,42 +166,57 @@ class SearchService {
         completed++;
         activeCount[0]--;
         // 发送完成进度
-        controller.add(SearchProgress(
-          completed: completed,
-          total: total,
-        ));
+        if (!controller.isClosed) {
+          controller.add(SearchProgress(
+            completed: completed,
+            total: total,
+          ));
+        }
+        closeControllerIfNeeded();
       }
     }
 
-    // 限制并发的调度器
+    // 使用 Future.doWhile 实现并发调度
     int index = 0;
-    void scheduleNext() {
-      try {
-        while (index < validSources.length && activeCount[0] < _maxConcurrentSearches) {
+    Future<void> runScheduler() async {
+      while (index < validSources.length && !cancelled) {
+        // 等待直到有可用槽位
+        while (activeCount[0] >= _maxConcurrentSearches && !cancelled) {
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+        if (cancelled) break;
+
+        // 启动新的搜索任务
+        if (index < validSources.length) {
           activeCount[0]++;
           final source = validSources[index++];
-          processSource(source).then((_) {
-            scheduleNext();
-          }).catchError((e) {
-            // 确保异常不会导致completed不递增卡 scheduleNext继续调度
-            scheduleNext();
-          });
-        }
-
-        // 所有任务完成
-        if (completed >= total && !controller.isClosed) {
-          controller.close();
-        }
-      } catch (e) {
-        // scheduleNext 本身异常时也要检查是否需要关闭
-        if (completed >= total && !controller.isClosed) {
-          controller.close();
+          processSource(source); // 不等待，让它并行运行
         }
       }
+      // 等待所有任务完成
+      while (activeCount[0] > 0 && !cancelled) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      closeControllerIfNeeded();
     }
 
-    // 开始调度
-    scheduleNext();
+    // 监听取消事件，确保资源释放
+    controller.onCancel = () {
+      cancelled = true;
+      closeControllerIfNeeded();
+    };
+
+    // 当 Stream 被监听时开始调度
+    controller.onListen = () {
+      runScheduler();
+    };
+
+    // 如果没有监听者，也开始调度（兼容直接获取 stream 的情况）
+    Future.delayed(Duration.zero, () {
+      if (!controller.hasListener && !cancelled) {
+        runScheduler();
+      }
+    });
 
     return controller.stream;
   }
@@ -191,20 +228,12 @@ class SearchService {
     // 清理 baseUrl，移除 ## 或 # 后面的标记
     final baseUrl = RuleParser.cleanBaseUrl(source.bookSourceUrl);
 
-    // 构建搜索URL
-    String url = source.searchUrl!;
-    if (url.contains('{{key}}')) {
-      url = url.replaceAll('{{key}}', Uri.encodeComponent(keyword));
-    } else if (url.contains('{{page}}')) {
-      url = url.replaceAll('{{page}}', '1');
-      if (url.contains('{{key}}')) {
-        url = url.replaceAll('{{key}}', Uri.encodeComponent(keyword));
-      } else {
-        url = '$url${Uri.encodeComponent(keyword)}';
-      }
-    } else {
-      url = '$url${Uri.encodeComponent(keyword)}';
-    }
+    // 构建搜索URL（使用 UrlBuilder 统一处理）
+    String url = UrlBuilder.buildSearchUrl(
+      source.searchUrl!,
+      keyword: keyword,
+      page: 1,
+    );
 
     // 如果是相对路径，与 baseUrl 拼接
     if (!url.startsWith('http://') && !url.startsWith('https://')) {

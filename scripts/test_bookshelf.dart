@@ -33,7 +33,7 @@ void main() async {
     };
     
     final json = jsonEncode(testBook);
-    final decoded = jsonDecode(json);
+    jsonDecode(json); // 验证JSON可解析
     print('  ✅ JSON序列化成功');
     print('  ✅ 字段完整性验证通过');
   } catch (e) {

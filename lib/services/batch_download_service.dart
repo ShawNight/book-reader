@@ -67,7 +67,6 @@ class BatchDownloadService {
   int _completedChapters = 0;
   int _failedChapters = 0;
   int _currentIndex = -1;
-  String? _currentBookUrl;
 
   // 进度流控制器
   final _progressController =
@@ -79,6 +78,24 @@ class BatchDownloadService {
 
   /// 是否正在下载
   bool get isDownloading => _isDownloading;
+
+  /// 释放资源（当服务不再需要时调用）
+  void dispose() {
+    _progressController.close();
+  }
+
+  /// 发送进度更新
+  void _emitProgress() {
+    if (!_progressController.isClosed) {
+      _progressController.add(BatchDownloadProgress(
+        total: _totalChapters,
+        completed: _completedChapters,
+        failed: _failedChapters,
+        current: _currentIndex,
+        isDownloading: _isDownloading,
+      ));
+    }
+  }
 
   /// 获取章节的下载状态
   DownloadStatus getStatus(String chapterUrl) {
@@ -129,7 +146,6 @@ class BatchDownloadService {
     }
 
     _isDownloading = true;
-    _currentBookUrl = bookUrl;
     _totalChapters = chapters.length;
     _completedChapters = 0;
     _failedChapters = 0;
@@ -151,7 +167,6 @@ class BatchDownloadService {
       }
     } finally {
       _isDownloading = false;
-      _currentBookUrl = null;
       _emitProgress();
     }
   }
@@ -205,19 +220,7 @@ class BatchDownloadService {
   /// 取消当前下载任务
   void cancelDownload() {
     _isDownloading = false;
-    _currentBookUrl = null;
     _emitProgress();
-  }
-
-  /// 发送进度更新
-  void _emitProgress() {
-    _progressController.add(BatchDownloadProgress(
-      total: _totalChapters,
-      completed: _completedChapters,
-      failed: _failedChapters,
-      current: _currentIndex,
-      isDownloading: _isDownloading,
-    ));
   }
 
   /// 将章节列表分割成批次

@@ -208,7 +208,20 @@ class RuleParser {
   }
 
   /// 解析相对URL，将其拼接到 baseUrl 上
+  /// [url] - 要解析的 URL
+  /// [baseUrl] - 基础 URL
+  /// 返回解析后的完整 URL
   static String resolveUrl(String url, String baseUrl) {
+    // 安全检查：拒绝危险协议
+    final lowerUrl = url.toLowerCase().trim();
+    if (lowerUrl.startsWith('javascript:') ||
+        lowerUrl.startsWith('data:') ||
+        lowerUrl.startsWith('vbscript:') ||
+        lowerUrl.startsWith('blob:') ||
+        lowerUrl.startsWith('file:')) {
+      return baseUrl; // 返回 baseUrl 作为安全替代
+    }
+
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url;
     }

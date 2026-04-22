@@ -75,3 +75,5 @@ coverage/
 # Android Gradle cache
 android/.gradle/
 book_source.json
+**/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+**/ios/Runner/GeneratedPluginRegistrant.m

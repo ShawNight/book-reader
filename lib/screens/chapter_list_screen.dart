@@ -543,7 +543,7 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(),
-            const SizedBox(height: AppSpacing.lg),
+            SizedBox(height: AppSpacing.lg),
             Text('正在加载章节列表...'),
           ],
         ),
@@ -604,7 +604,7 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
                     children: [
                       Text(
                         '第${index + 1}章',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontWeight: FontWeight.w500,
                           color: AppColors.greyDark,
                         ),
@@ -616,7 +616,7 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
                       _buildDownloadStatusIcon(downloadStatus),
                       if (hasBookmark) ...[
                         const SizedBox(width: AppSpacing.sm),
-                        Icon(
+                        const Icon(
                           Icons.bookmark,
                           size: AppSpacing.iconSizeSm,
                           color: AppColors.primary,
@@ -627,18 +627,18 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
                   onTap: _isDownloading ? null : () => _toggleSelection(index),
                 );
               } else {
-                // 普通模式 - 目录样式
-                return ListTile(
-                  contentPadding: AppSpacing.listItemPadding,
-                  title: Row(
-                    children: [
-                      Text(
-                        '第${index + 1}章',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.greyDark,
-                        ),
+              // 普通模式 - 目录样式
+              return ListTile(
+                contentPadding: AppSpacing.listItemPadding,
+                title: Row(
+                  children: [
+                    Text(
+                      '第${index + 1}章',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.greyDark,
                       ),
+                    ),
                       const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Text(chapter.name),
@@ -646,7 +646,7 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
                       _buildDownloadStatusIcon(downloadStatus),
                       if (hasBookmark) ...[
                         const SizedBox(width: AppSpacing.sm),
-                        Icon(
+                        const Icon(
                           Icons.bookmark,
                           size: AppSpacing.iconSizeSm,
                           color: AppColors.primary,
@@ -724,7 +724,7 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.offline_pin,
                     size: AppSpacing.iconSizeSm,
                     color: AppColors.successDark,
@@ -732,7 +732,7 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
                   const SizedBox(width: AppSpacing.xs),
                   Text(
                     '已缓存 $_downloadedCount 章',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: AppSpacing.sm + 1,
                       color: AppColors.successDark,
                     ),

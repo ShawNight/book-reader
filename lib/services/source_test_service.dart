@@ -6,6 +6,7 @@ import 'package:html/parser.dart' show parse;
 
 import '../models/book_source.dart';
 import '../models/source_test_result.dart';
+import '../utils/url_builder.dart';
 import 'rule_parser.dart';
 
 /// 书源测试服务
@@ -37,6 +38,11 @@ class SourceTestService {
 
   /// 是否正在测试
   bool get isTesting => _isTesting;
+
+  /// 释放资源（当服务不再需要时调用）
+  void dispose() {
+    _testDio.close();
+  }
 
   /// 取消测试
   void cancelTest() {
@@ -71,20 +77,12 @@ class SourceTestService {
     final stopwatch = Stopwatch()..start();
 
     try {
-      // 构建搜索URL
-      String url = source.searchUrl!;
-      if (url.contains('{{key}}')) {
-        url = url.replaceAll('{{key}}', Uri.encodeComponent(testKeyword));
-      } else if (url.contains('{{page}}')) {
-        url = url.replaceAll('{{page}}', '1');
-        if (url.contains('{{key}}')) {
-          url = url.replaceAll('{{key}}', Uri.encodeComponent(testKeyword));
-        } else {
-          url = '$url${Uri.encodeComponent(testKeyword)}';
-        }
-      } else {
-        url = '$url${Uri.encodeComponent(testKeyword)}';
-      }
+      // 构建搜索URL（使用 UrlBuilder 统一处理）
+      String url = UrlBuilder.buildSearchUrl(
+        source.searchUrl!,
+        keyword: testKeyword,
+        page: 1,
+      );
 
       // 清理 baseUrl
       final baseUrl = RuleParser.cleanBaseUrl(source.bookSourceUrl);
@@ -175,6 +173,14 @@ class SourceTestService {
     var completed = 0;
     final activeCount = <int>[0];
 
+    // 确保 controller 正确关闭的辅助方法
+    void closeControllerIfNeeded() {
+      if ((completed >= total || _isCancelled) && !controller.isClosed) {
+        _isTesting = false;
+        controller.close();
+      }
+    }
+
     // 分批并发测试
     Future<void> processSource(BookSource source) async {
       if (_isCancelled) {
@@ -183,47 +189,82 @@ class SourceTestService {
       }
 
       // 发送进度更新（测试中）
-      controller.add(SourceTestProgress(
-        completed: completed,
-        total: total,
-        currentSourceName: source.bookSourceName,
-      ));
+      if (!controller.isClosed) {
+        controller.add(SourceTestProgress(
+          completed: completed,
+          total: total,
+          currentSourceName: source.bookSourceName,
+        ));
+      }
 
-      final result = await testSource(source, keyword: keyword);
+      try {
+        final result = await testSource(source, keyword: keyword);
+        completed++;
+        activeCount[0]--;
 
-      completed++;
-      activeCount[0]--;
+        // 发送完成进度
+        if (!controller.isClosed) {
+          controller.add(SourceTestProgress(
+            completed: completed,
+            total: total,
+            lastResult: result,
+          ));
+        }
+      } catch (e) {
+        completed++;
+        activeCount[0]--;
+        if (!controller.isClosed) {
+          controller.add(SourceTestProgress(
+            completed: completed,
+            total: total,
+          ));
+        }
+      }
 
-      // 发送完成进度
-      controller.add(SourceTestProgress(
-        completed: completed,
-        total: total,
-        lastResult: result,
-      ));
+      closeControllerIfNeeded();
     }
 
-    // 限制并发的调度器
+    // 使用 Future 实现并发调度
     int index = 0;
-    void scheduleNext() {
-      while (index < sources.length &&
-          activeCount[0] < maxConcurrentTests &&
-          !_isCancelled) {
-        activeCount[0]++;
-        final source = sources[index++];
-        processSource(source).then((_) {
-          scheduleNext();
-        });
-      }
+    Future<void> runScheduler() async {
+      while (index < sources.length && !_isCancelled) {
+        // 等待直到有可用槽位
+        while (activeCount[0] >= maxConcurrentTests && !_isCancelled) {
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+        if (_isCancelled) break;
 
-      // 所有任务完成或已取消
-      if ((completed >= total || _isCancelled) && !controller.isClosed) {
-        _isTesting = false;
-        controller.close();
+        // 启动新的测试任务
+        if (index < sources.length) {
+          activeCount[0]++;
+          final source = sources[index++];
+          processSource(source); // 不等待，让它并行运行
+        }
       }
+      // 等待所有任务完成
+      while (activeCount[0] > 0 && !_isCancelled) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      closeControllerIfNeeded();
     }
 
-    // 开始调度
-    scheduleNext();
+    // 监听取消事件，确保资源释放
+    controller.onCancel = () {
+      _isCancelled = true;
+      closeControllerIfNeeded();
+    };
+
+    // 当 Stream 被监听时开始调度
+    controller.onListen = () {
+      runScheduler();
+    };
+
+    // 如果没有监听者，也开始调度（兼容直接获取 stream 的情况）
+    Future.delayed(Duration.zero, () {
+      if (!controller.hasListener && !_isCancelled) {
+        runScheduler();
+      }
+    });
 
     return controller.stream;
   }
